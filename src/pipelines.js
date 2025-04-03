@@ -1797,7 +1797,7 @@ export class AutomaticSpeechRecognitionPipeline extends (/** @type {new (options
 
         if (return_timestamps === 'word') {
             generation_config['return_token_timestamps'] = true;
-            generation_config['return_timestamps'] = false; // Do not predict timestamp tokens
+            generation_config['return_timestamps'] = true; // Do not predict timestamp tokens
         }
 
         const single = !Array.isArray(audio);

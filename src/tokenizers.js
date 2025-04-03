@@ -1,12 +1,12 @@
 
 /**
  * @file Tokenizers are used to prepare textual inputs for a model.
- * 
+ *
  * **Example:** Create an `AutoTokenizer` and use it to tokenize a sentence.
  * This will automatically detect the tokenizer type based on the tokenizer class defined in `tokenizer.json`.
  * ```javascript
  * import { AutoTokenizer } from '@huggingface/transformers';
- * 
+ *
  * const tokenizer = await AutoTokenizer.from_pretrained('Xenova/bert-base-uncased');
  * const { input_ids } = await tokenizer('I love transformers!');
  * // Tensor {
@@ -16,7 +16,7 @@
  * //   size: 6,
  * // }
  * ```
- * 
+ *
  * @module tokenizers
  */
 import {
@@ -864,7 +864,7 @@ class BPE extends TokenizerModel {
 
     /**
      * Helper function to add a node to the priority queue.
-     * @param {PriorityQueue} queue 
+     * @param {PriorityQueue} queue
      * @param {BPENode} node
      * @private
      */
@@ -1413,7 +1413,7 @@ class BertPreTokenizer extends PreTokenizer {
     /**
      * A PreTokenizer that splits text into wordpieces using a basic tokenization scheme
      * similar to that used in the original implementation of BERT.
-     * 
+     *
      * @param {Object} config The configuration object.
      */
     constructor(config) {
@@ -1425,7 +1425,7 @@ class BertPreTokenizer extends PreTokenizer {
     }
     /**
      * Tokenizes a single text using the BERT pre-tokenization scheme.
-     * 
+     *
      * @param {string} text The text to tokenize.
      * @param {Object} [options] Additional options for the pre-tokenization logic.
      * @returns {string[]} An array of tokens.
@@ -1917,7 +1917,7 @@ class Decoder extends Callable {
 
     /**
      * Apply the decoder to a list of tokens.
-     * 
+     *
      * @param {string[]} tokens The list of tokens.
      * @returns {string[]} The decoded list of tokens.
      * @throws {Error} If the `decode_chain` method is not implemented in the subclass.
@@ -2362,7 +2362,7 @@ class Precompiled extends Normalizer {
         //  3. nmt_nfkc_cf: nmt_nfkc + Unicode case folding (mostly lower casing)
         //  4. nfkc_cf: nfkc + Unicode case folding.
         //  5. identity: no normalization
-        // 
+        //
         // For now, we only implement the default (nmt_nfkc).
         // See https://raw.githubusercontent.com/google/sentencepiece/master/data/nmt_nfkc.tsv for the full list of rules.
         // TODO: detect when a different `this.charsmap` is used.
@@ -2499,7 +2499,7 @@ const SPECIAL_TOKEN_ATTRIBUTES = [
 ]
 
 /**
- * 
+ *
  * Helper function for padding values of an object, which are each arrays.
  * NOTE: No additional checks are made here for validity of arguments.
  * @param {Record<string, any[]>} item The input object.
@@ -2681,11 +2681,11 @@ export class PreTrainedTokenizer extends Callable {
     }
 
     /**
-     * Loads a pre-trained tokenizer from the given `pretrained_model_name_or_path`. 
-     * 
+     * Loads a pre-trained tokenizer from the given `pretrained_model_name_or_path`.
+     *
      * @param {string} pretrained_model_name_or_path The path to the pre-trained tokenizer.
      * @param {PretrainedTokenizerOptions} options Additional options for loading the tokenizer.
-     * 
+     *
      * @throws {Error} Throws an error if the tokenizer.json or tokenizer_config.json files are not found in the `pretrained_model_name_or_path`.
      * @returns {Promise<PreTrainedTokenizer>} A new instance of the `PreTrainedTokenizer` class.
      */
@@ -2713,7 +2713,7 @@ export class PreTrainedTokenizer extends Callable {
 
     /**
      * @typedef {number[]|number[][]|Tensor} BatchEncodingItem
-     * 
+     *
      * @typedef {Object} BatchEncoding Holds the output of the tokenizer's call function.
      * @property {BatchEncodingItem} input_ids List of token ids to be fed to a model.
      * @property {BatchEncodingItem} attention_mask List of indices specifying which tokens should be attended to by the model.
@@ -3119,7 +3119,7 @@ export class PreTrainedTokenizer extends Callable {
      * Retrieve the chat template string used for tokenizing chat messages. This template is used
      * internally by the `apply_chat_template` method and can also be used externally to retrieve the model's chat
      * template for better generation tracking.
-     * 
+     *
      * @param {Object} options An optional object containing the following properties:
      * @param {string} [options.chat_template=null]
      * A Jinja template or the name of a template to use for this conversion.
@@ -3179,29 +3179,29 @@ export class PreTrainedTokenizer extends Callable {
      * Converts a list of message objects with `"role"` and `"content"` keys to a list of token
      * ids. This method is intended for use with chat models, and will read the tokenizer's chat_template attribute to
      * determine the format and control tokens to use when converting.
-     * 
+     *
      * See [here](https://huggingface.co/docs/transformers/chat_templating) for more information.
-     * 
+     *
      * **Example:** Applying a chat template to a conversation.
-     * 
+     *
      * ```javascript
      * import { AutoTokenizer } from "@huggingface/transformers";
-     * 
+     *
      * const tokenizer = await AutoTokenizer.from_pretrained("Xenova/mistral-tokenizer-v1");
-     * 
+     *
      * const chat = [
      *   { "role": "user", "content": "Hello, how are you?" },
      *   { "role": "assistant", "content": "I'm doing great. How can I help you today?" },
      *   { "role": "user", "content": "I'd like to show off how chat templating works!" },
      * ]
-     * 
+     *
      * const text = tokenizer.apply_chat_template(chat, { tokenize: false });
      * // "<s>[INST] Hello, how are you? [/INST]I'm doing great. How can I help you today?</s> [INST] I'd like to show off how chat templating works! [/INST]"
-     * 
+     *
      * const input_ids = tokenizer.apply_chat_template(chat, { tokenize: true, return_tensor: false });
      * // [1, 733, 16289, 28793, 22557, 28725, 910, 460, 368, 28804, 733, 28748, 16289, 28793, 28737, 28742, 28719, 2548, 1598, 28723, 1602, 541, 315, 1316, 368, 3154, 28804, 2, 28705, 733, 16289, 28793, 315, 28742, 28715, 737, 298, 1347, 805, 910, 10706, 5752, 1077, 3791, 28808, 733, 28748, 16289, 28793]
      * ```
-     * 
+     *
      * @param {Message[]} conversation A list of message objects with `"role"` and `"content"` keys,
      * representing the chat history so far.
      * @param {Object} options An optional object containing the following properties:
@@ -3483,14 +3483,14 @@ function _build_translation_inputs(self, raw_inputs, tokenizer_options, generate
 
 /**
  * The NllbTokenizer class is used to tokenize text for NLLB ("No Language Left Behind") models.
- * 
+ *
  * No Language Left Behind (NLLB) is a first-of-its-kind, AI breakthrough project
  * that open-sources models capable of delivering high-quality translations directly
  * between any pair of 200+ languages — including low-resource languages like Asturian,
  * Luganda, Urdu and more. It aims to help people communicate with anyone, anywhere,
  * regardless of their language preferences. For more information, check out their
  * [paper](https://arxiv.org/abs/2207.04672).
- * 
+ *
  * For a list of supported languages (along with their language codes),
  * @see {@link https://github.com/facebookresearch/flores/blob/main/flores200/README.md#languages-in-flores-200}
  */
@@ -3518,11 +3518,11 @@ export class NllbTokenizer extends PreTrainedTokenizer {
 
 /**
  * The M2M100Tokenizer class is used to tokenize text for M2M100 ("Many-to-Many") models.
- * 
+ *
  * M2M100 is a multilingual encoder-decoder (seq-to-seq) model trained for Many-to-Many
  * multilingual translation. It was introduced in this [paper](https://arxiv.org/abs/2010.11125)
  * and first released in [this](https://github.com/pytorch/fairseq/tree/master/examples/m2m_100) repository.
- * 
+ *
  * For a list of supported languages (along with their language codes),
  * @see {@link https://huggingface.co/facebook/m2m100_418M#languages-covered}
  */
@@ -3606,9 +3606,9 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
         let chunk = new_chunk();
         let time_offset = 0.0;
         const timestamp_begin = this.timestamp_begin;
-        // Whisper timestamp tokens start from 0.00 and go to timestamp 30.00 in 0.02 increments. 
-        // We can calculate the last time stamp token as timestamp_begin plus the number of tokens 
-        // tokens from 0.00 to 30.00 which is 1500. 
+        // Whisper timestamp tokens start from 0.00 and go to timestamp 30.00 in 0.02 increments.
+        // We can calculate the last time stamp token as timestamp_begin plus the number of tokens
+        // tokens from 0.00 to 30.00 which is 1500.
         const total_timestamp_tokens = 1500; // (30.00 - 0.00) / 0.02
         const timestamp_end = timestamp_begin + total_timestamp_tokens;
 
@@ -3762,11 +3762,16 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     current_tokens.push(token)
 
                     if (returnWordTimestamps) {
-                        let start_time = round(token_timestamps[i] + time_offset, 2);
+                        let start_time;
+                        if (i == 0) {
+                            start_time = round(0.0 + time_offset, 2)
+                        } else {
+                            start_time = round(token_timestamps[i - 1] + time_offset, 2);
+                        }
 
                         let end_time;
                         if (i + 1 < token_timestamps.length) {
-                            end_time = round(token_timestamps[i + 1] + time_offset, 2);
+                            end_time = round(token_timestamps[i] + time_offset, 2);
 
                             // Do not allow punctuation-only tokens to have a duration.
                             // This prevents long pauses from messing up the timestamps.
@@ -3995,11 +4000,11 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
     /**
      * Groups tokens by word. Returns a tuple containing a list of strings with the words,
      * and a list of `token_id` sequences with the tokens making up each word.
-     * @param {number[]} tokens 
-     * @param {string} [language] 
-     * @param {string} prepend_punctionations 
-     * @param {string} append_punctuations 
-     * 
+     * @param {number[]} tokens
+     * @param {string} [language]
+     * @param {string} prepend_punctionations
+     * @param {string} append_punctuations
+     *
      * @private
      */
     combineTokensIntoWords(tokens, language, prepend_punctionations = "\"'“¡¿([{-", append_punctuations = "\"'.。,，!！?？:：”)]}、") {
@@ -4069,7 +4074,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
 
     /**
      * Combine tokens into words by splitting at any position where the tokens are decoded as valid unicode points.
-     * @param {number[]} tokens 
+     * @param {number[]} tokens
      * @returns {*}
      * @private
      */
@@ -4114,7 +4119,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
 
     /**
      * Combine tokens into words by splitting at whitespace and punctuation tokens.
-     * @param {number[]} tokens 
+     * @param {number[]} tokens
      * @private
      */
     splitTokensOnSpaces(tokens) {
@@ -4157,11 +4162,11 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
 
     /**
      * Merges punctuation tokens with neighboring words.
-     * @param {string[]} words 
-     * @param {number[][]} tokens 
-     * @param {number[][]} indices 
-     * @param {string} prepended 
-     * @param {string} appended 
+     * @param {string[]} words
+     * @param {number[][]} tokens
+     * @param {number[][]} indices
+     * @param {string} prepended
+     * @param {string} appended
      * @private
      */
     mergePunctuations(words, tokens, indices, prepended, appended) {
@@ -4296,7 +4301,7 @@ export class MgpstrTokenizer extends PreTrainedTokenizer { }
 /**
  * Helper class which is used to instantiate pretrained tokenizers with the `from_pretrained` function.
  * The chosen tokenizer class is determined by the type specified in the tokenizer config.
- * 
+ *
  * @example
  * const tokenizer = await AutoTokenizer.from_pretrained('Xenova/bert-base-uncased');
  */
@@ -4355,17 +4360,17 @@ export class AutoTokenizer {
 
     /**
      * Instantiate one of the tokenizer classes of the library from a pretrained model.
-     * 
+     *
      * The tokenizer class to instantiate is selected based on the `tokenizer_class` property of the config object
      * (either passed as an argument or loaded from `pretrained_model_name_or_path` if possible)
-     * 
+     *
      * @param {string} pretrained_model_name_or_path The name or path of the pretrained model. Can be either:
      * - A string, the *model id* of a pretrained tokenizer hosted inside a model repo on huggingface.co.
      *   Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced under a
      *   user or organization name, like `dbmdz/bert-base-german-cased`.
      * - A path to a *directory* containing tokenizer files, e.g., `./my_model_directory/`.
      * @param {PretrainedTokenizerOptions} options Additional options for loading the tokenizer.
-     * 
+     *
      * @returns {Promise<PreTrainedTokenizer>} A new instance of the PreTrainedTokenizer class.
      */
     static async from_pretrained(pretrained_model_name_or_path, {
