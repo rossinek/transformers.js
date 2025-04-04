@@ -14823,14 +14823,12 @@ class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         // let's ignore decoder_input_ids that can negatively impact the DTW while we know they have timestamps 0.0s
         // (they are not taken into account for the DTW in OAI implementation)
         if (num_input_ids !== null) {
-            console.log('num_input_ids before slice', num_input_ids)
             weights = weights.slice(
                 null,           // keep all of dim 0
                 null,           // keep all of dim 1
                 [num_input_ids, null],// from numInputIds to end in dim 2
                 null            // keep all of dim 3
             );
-            console.log('weights shape after slice:', weights.dims);
         }
 
         const [std, calculatedMean] = (0,_utils_tensor_js__WEBPACK_IMPORTED_MODULE_9__.std_mean)(weights, -2, 0, true);
