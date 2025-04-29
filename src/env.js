@@ -1,24 +1,24 @@
 /**
  * @file Module used to configure Transformers.js.
- * 
+ *
  * **Example:** Disable remote models.
  * ```javascript
  * import { env } from '@huggingface/transformers';
  * env.allowRemoteModels = false;
  * ```
- * 
+ *
  * **Example:** Set local model path.
  * ```javascript
  * import { env } from '@huggingface/transformers';
  * env.localModelPath = '/path/to/local/models/';
  * ```
- * 
+ *
  * **Example:** Set cache directory.
  * ```javascript
  * import { env } from '@huggingface/transformers';
  * env.cacheDir = '/path/to/cache/directory/';
  * ```
- * 
+ *
  * @module env
  */
 
@@ -36,7 +36,7 @@ const IS_WEBGPU_AVAILABLE = typeof navigator !== 'undefined' && 'gpu' in navigat
 const IS_WEBNN_AVAILABLE = typeof navigator !== 'undefined' && 'ml' in navigator;
 
 const IS_PROCESS_AVAILABLE = typeof process !== 'undefined';
-const IS_NODE_ENV = IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
+const IS_NODE_ENV = false; // IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
 const IS_FS_AVAILABLE = !isEmpty(fs);
 const IS_PATH_AVAILABLE = !isEmpty(path);
 

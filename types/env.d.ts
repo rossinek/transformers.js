@@ -15,7 +15,7 @@ export const apis: Readonly<{
     /** Whether the Node.js process API is available */
     IS_PROCESS_AVAILABLE: boolean;
     /** Whether we are running in a Node.js environment */
-    IS_NODE_ENV: boolean;
+    IS_NODE_ENV: false;
     /** Whether the filesystem API is available */
     IS_FS_AVAILABLE: boolean;
     /** Whether the path API is available */
