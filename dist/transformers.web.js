@@ -27504,7 +27504,7 @@ class WhisperTokenizer extends PreTrainedTokenizer {
                         new_chunks.push(word);
                     }
                 }
-                optional = { "chunks": new_chunks };
+                optional = { "chunks": new_chunks, "sentences": chunks };
             } else {
                 optional = { "chunks": chunks };
             }
