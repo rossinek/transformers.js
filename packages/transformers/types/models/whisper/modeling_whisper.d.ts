@@ -32,12 +32,13 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      * @param {number[][]} alignment_heads Alignment heads of the model
      * @param {number} [num_frames=null] Number of frames in the input audio.
      * @param {number} [time_precision=0.02] Precision of the timestamps in seconds
+     * @param {number} [num_input_ids=null] Number of input IDs.
      * @returns {Tensor} tensor containing the timestamps in seconds for each predicted token
      */
     _extract_token_timestamps(generate_outputs: {
         cross_attentions: Tensor[][];
         sequences: Tensor;
-    }, alignment_heads: number[][], num_frames?: number, time_precision?: number): Tensor;
+    }, alignment_heads: number[][], num_frames?: number, time_precision?: number, num_input_ids?: number): Tensor;
 }
 export class LiteWhisperForConditionalGeneration extends WhisperForConditionalGeneration {
 }

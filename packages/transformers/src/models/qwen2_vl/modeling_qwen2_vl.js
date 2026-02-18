@@ -120,7 +120,7 @@ export class Qwen2VLForConditionalGeneration extends Qwen2VLPreTrainedModel {
                         Math.floor(Number(w) / spatial_merge_size),
                     ];
                     const text_len = ed - st;
-                    const st_idx = llm_pos_ids_list.length > 0 ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
+                    const st_idx = llm_pos_ids_list.at(-1) ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
 
                     llm_pos_ids_list.push(Array.from({ length: 3 * text_len }, (_, i) => st_idx + (i % text_len)));
 
@@ -142,7 +142,7 @@ export class Qwen2VLForConditionalGeneration extends Qwen2VLPreTrainedModel {
                 }
 
                 if (st < ids.length) {
-                    const st_idx = llm_pos_ids_list.length > 0 ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
+                    const st_idx = llm_pos_ids_list.at(-1) ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
                     const text_len = ids.length - st;
 
                     llm_pos_ids_list.push(Array.from({ length: 3 * text_len }, (_, i) => st_idx + (i % text_len)));

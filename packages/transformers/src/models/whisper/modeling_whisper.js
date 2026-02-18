@@ -159,6 +159,8 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 outputs,
                 generation_config.alignment_heads,
                 generation_config.num_frames,
+                undefined,
+                init_tokens ? init_tokens.length : null
             );
         }
 
@@ -175,9 +177,10 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      * @param {number[][]} alignment_heads Alignment heads of the model
      * @param {number} [num_frames=null] Number of frames in the input audio.
      * @param {number} [time_precision=0.02] Precision of the timestamps in seconds
+     * @param {number} [num_input_ids=null] Number of input IDs.
      * @returns {Tensor} tensor containing the timestamps in seconds for each predicted token
      */
-    _extract_token_timestamps(generate_outputs, alignment_heads, num_frames = null, time_precision = 0.02) {
+    _extract_token_timestamps(generate_outputs, alignment_heads, num_frames = null, time_precision = 0.02, num_input_ids = null) {
         if (!generate_outputs.cross_attentions) {
             throw new Error(
                 'Model outputs must contain cross attentions to extract timestamps. ' +
@@ -213,7 +216,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 ),
         );
 
-        const weights = stack(
+        let weights = stack(
             alignment_heads.map(([l, h]) => {
                 if (l >= cross_attentions.length) {
                     throw new Error(
@@ -225,6 +228,19 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                     : cross_attentions[l].slice(null, h);
             }),
         ).transpose(1, 0, 2, 3);
+
+        // let's ignore decoder_input_ids that can negatively impact the DTW while we know they have timestamps 0.0s
+        // (they are not taken into account for the DTW in OAI implementation)
+        if (num_input_ids !== null) {
+            console.log('num_input_ids before slice', num_input_ids)
+            weights = weights.slice(
+                null,           // keep all of dim 0
+                null,           // keep all of dim 1
+                [num_input_ids, null],// from numInputIds to end in dim 2
+                null            // keep all of dim 3
+            );
+            console.log('weights shape after slice:', weights.dims);
+        }
 
         const [std, calculatedMean] = std_mean(weights, -2, 0, true);
 
@@ -283,7 +299,17 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                     jump_times.push(time_indices[i] * time_precision);
                 }
             }
-            timestamps[batch_idx].data.set(jump_times, 1);
+            // each predicted token has a corresponding timestamp, expect the eos token for which we don't retrieve cross attentions
+            // 1. for decoder_input_ids, we set the timestamps to 0.0
+            // 2. for the eos token, we simply duplicate the timestamp of the last non-eos token
+            const rawValues = new Float32Array([
+                ...new Array(num_input_ids).fill(0),
+                ...jump_times,
+                jump_times[jump_times.length - 1]
+            ]);
+            // Create tensor and explicitly set its data
+            timestamps[batch_idx] = new Tensor('float32', new Float32Array(rawValues.length), [rawValues.length]);
+            timestamps[batch_idx].data.set(rawValues);
         }
 
         return timestamps;

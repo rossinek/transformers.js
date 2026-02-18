@@ -225,8 +225,8 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
 
                     if (returnWordTimestamps) {
                         // Clamp token timestamps to chunk length to prevent exceeding audio duration (issue #1357)
-                        let raw_start = token_timestamps[i];
-                        let raw_end = (i + 1 < token_timestamps.length) ? token_timestamps[i + 1] : null;
+                        let raw_start = i == 0 ? 0.0 : token_timestamps[i - 1];
+                        let raw_end = (i < token_timestamps.length) ? token_timestamps[i] : null;
                         if (current_chunk_len !== null) {
                             raw_start = Math.min(raw_start, current_chunk_len);
                             if (raw_end !== null) {

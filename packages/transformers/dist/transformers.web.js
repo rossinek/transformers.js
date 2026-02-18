@@ -10531,8 +10531,8 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
         } else {
           current_tokens.push(token);
           if (returnWordTimestamps) {
-            let raw_start = token_timestamps[i];
-            let raw_end = i + 1 < token_timestamps.length ? token_timestamps[i + 1] : null;
+            let raw_start = i == 0 ? 0 : token_timestamps[i - 1];
+            let raw_end = i < token_timestamps.length ? token_timestamps[i] : null;
             if (current_chunk_len !== null) {
               raw_start = Math.min(raw_start, current_chunk_len);
               if (raw_end !== null) {
@@ -22380,7 +22380,7 @@ var Qwen2VLForConditionalGeneration = class extends Qwen2VLPreTrainedModel {
             Math.floor(Number(w) / spatial_merge_size)
           ];
           const text_len = ed - st;
-          const st_idx = llm_pos_ids_list.length > 0 ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
+          const st_idx = llm_pos_ids_list.at(-1) ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
           llm_pos_ids_list.push(Array.from({ length: 3 * text_len }, (_, i2) => st_idx + i2 % text_len));
           const offset = text_len + st_idx;
           const grid_size = llm_grid_t * llm_grid_h * llm_grid_w;
@@ -22397,7 +22397,7 @@ var Qwen2VLForConditionalGeneration = class extends Qwen2VLPreTrainedModel {
           st = ed + grid_size;
         }
         if (st < ids.length) {
-          const st_idx = llm_pos_ids_list.length > 0 ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
+          const st_idx = llm_pos_ids_list.at(-1) ? max(llm_pos_ids_list.at(-1))[0] + 1 : 0;
           const text_len = ids.length - st;
           llm_pos_ids_list.push(Array.from({ length: 3 * text_len }, (_, i2) => st_idx + i2 % text_len));
         }
@@ -23622,7 +23622,9 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         // @ts-expect-error TS2345
         outputs,
         generation_config.alignment_heads,
-        generation_config.num_frames
+        generation_config.num_frames,
+        void 0,
+        init_tokens ? init_tokens.length : null
       );
     }
     return outputs;
@@ -23637,9 +23639,10 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
    * @param {number[][]} alignment_heads Alignment heads of the model
    * @param {number} [num_frames=null] Number of frames in the input audio.
    * @param {number} [time_precision=0.02] Precision of the timestamps in seconds
+   * @param {number} [num_input_ids=null] Number of input IDs.
    * @returns {Tensor} tensor containing the timestamps in seconds for each predicted token
    */
-  _extract_token_timestamps(generate_outputs, alignment_heads, num_frames = null, time_precision = 0.02) {
+  _extract_token_timestamps(generate_outputs, alignment_heads, num_frames = null, time_precision = 0.02, num_input_ids = null) {
     if (!generate_outputs.cross_attentions) {
       throw new Error(
         "Model outputs must contain cross attentions to extract timestamps. This is most likely because the model was not exported with `output_attentions=True`."
@@ -23665,7 +23668,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         2
       )
     );
-    const weights = stack(
+    let weights = stack(
       alignment_heads.map(([l, h]) => {
         if (l >= cross_attentions.length) {
           throw new Error(
@@ -23675,6 +23678,20 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         return num_frames ? cross_attentions[l].slice(null, h, null, [0, num_frames]) : cross_attentions[l].slice(null, h);
       })
     ).transpose(1, 0, 2, 3);
+    if (num_input_ids !== null) {
+      console.log("num_input_ids before slice", num_input_ids);
+      weights = weights.slice(
+        null,
+        // keep all of dim 0
+        null,
+        // keep all of dim 1
+        [num_input_ids, null],
+        // from numInputIds to end in dim 2
+        null
+        // keep all of dim 3
+      );
+      console.log("weights shape after slice:", weights.dims);
+    }
     const [std, calculatedMean] = std_mean(weights, -2, 0, true);
     const smoothedWeights = weights.clone();
     for (let a = 0; a < smoothedWeights.dims[0]; ++a) {
@@ -23713,7 +23730,13 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
           jump_times.push(time_indices[i] * time_precision);
         }
       }
-      timestamps[batch_idx].data.set(jump_times, 1);
+      const rawValues = new Float32Array([
+        ...new Array(num_input_ids).fill(0),
+        ...jump_times,
+        jump_times[jump_times.length - 1]
+      ]);
+      timestamps[batch_idx] = new Tensor2("float32", new Float32Array(rawValues.length), [rawValues.length]);
+      timestamps[batch_idx].data.set(rawValues);
     }
     return timestamps;
   }
