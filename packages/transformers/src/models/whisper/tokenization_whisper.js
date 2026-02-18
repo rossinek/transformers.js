@@ -403,19 +403,12 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     );
                 }
 
-                let matches;
-                if (use_token_timestamp_sequences) {
-                    // Get length of longest subsequence of tokens that match
-                    // and have timestamps that are in order
-                    matches = left.filter(
-                        (elem, idx) =>
-                            elem === right[idx] &&
-                            left_token_timestamp_sequence[leftStart + idx] <=
-                                token_timestamp_sequences[i][rightStart + idx],
-                    ).length;
-                } else {
-                    matches = left.filter((elem, idx) => elem === right[idx]).length;
-                }
+                // Always match by token equality only. The DTW-based token timestamps
+                // are too noisy (especially with fp16/quantized models) for strict
+                // temporal ordering — using them here causes valid matches to be
+                // rejected, leading to wrong merge points and dropped words.
+                // Timestamp sequences are still tracked and split in parallel below.
+                const matches = left.filter((elem, idx) => elem === right[idx]).length;
 
                 // epsilon to favor long perfect matches
                 const eps = j / 10000.0;

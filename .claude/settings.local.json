@@ -5,7 +5,17 @@
       "Bash(ln -s:*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm exec playwright:*)",
-      "Bash(pnpm test:e2e:*)"
+      "Bash(pnpm test:e2e:*)",
+      "Bash(grep:*)",
+      "Bash(node -e:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pnpm build:*)",
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest:*)",
+      "Bash(pnpm test:*)",
+      "Bash(ffprobe:*)",
+      "Bash(npx playwright:*)",
+      "Bash(node:*)",
+      "Bash(tee:*)"
     ]
   }
 }

@@ -15340,14 +15340,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
             "There is a bug within whisper `decode_asr` function, please report it. Dropping to prevent bad inference."
           );
         }
-        let matches;
-        if (use_token_timestamp_sequences) {
-          matches = left.filter(
-            (elem, idx) => elem === right[idx] && left_token_timestamp_sequence[leftStart2 + idx] <= token_timestamp_sequences[i][rightStart2 + idx]
-          ).length;
-        } else {
-          matches = left.filter((elem, idx) => elem === right[idx]).length;
-        }
+        const matches = left.filter((elem, idx) => elem === right[idx]).length;
         const eps = j / 1e4;
         const matching = matches / j + eps;
         if (matches > 1 && matching > max2) {
@@ -28374,7 +28367,6 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       })
     ).transpose(1, 0, 2, 3);
     if (num_input_ids !== null) {
-      console.log("num_input_ids before slice", num_input_ids);
       weights = weights.slice(
         null,
         // keep all of dim 0
@@ -28385,7 +28377,6 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         null
         // keep all of dim 3
       );
-      console.log("weights shape after slice:", weights.dims);
     }
     const [std, calculatedMean] = std_mean(weights, -2, 0, true);
     const smoothedWeights = weights.clone();
