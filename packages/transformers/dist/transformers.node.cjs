@@ -15231,8 +15231,10 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
       const token_timestamps = returnWordTimestamps ? output.token_timestamps : null;
       let last_timestamp = null;
       let first_timestamp = timestamp_begin;
+      let current_chunk_len = null;
       if ("stride" in output) {
         const [chunk_len, stride_left, stride_right] = output.stride;
+        current_chunk_len = chunk_len;
         time_offset -= stride_left;
         right_stride_start = chunk_len - stride_right;
         if (stride_left) {
@@ -15312,10 +15314,18 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
         } else {
           current_tokens.push(token);
           if (returnWordTimestamps) {
-            let start_time = round(token_timestamps[i] + time_offset, 2);
+            let raw_start = token_timestamps[i];
+            let raw_end = i + 1 < token_timestamps.length ? token_timestamps[i + 1] : null;
+            if (current_chunk_len !== null) {
+              raw_start = Math.min(raw_start, current_chunk_len);
+              if (raw_end !== null) {
+                raw_end = Math.min(raw_end, current_chunk_len);
+              }
+            }
+            let start_time = round(raw_start + time_offset, 2);
             let end_time;
-            if (i + 1 < token_timestamps.length) {
-              end_time = round(token_timestamps[i + 1] + time_offset, 2);
+            if (raw_end !== null) {
+              end_time = round(raw_end + time_offset, 2);
               const decoded_text = this.decode([token]);
               if (PUNCTUATION_ONLY_REGEX.test(decoded_text)) {
                 end_time = round(Math.min(start_time + time_precision, end_time), 2);
