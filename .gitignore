@@ -7,9 +7,10 @@ node_modules
 deno.lock
 package-lock.json
 
-# Do not track build artifacts/generated files
-packages/**/dist
-packages/**/types
+# Track build artifacts/generated files
+# packages/**/dist
+# packages/**/types
+
 *.tsbuildinfo
 
 # Do not track coverage reports
