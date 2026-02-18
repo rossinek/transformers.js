@@ -10,7 +10,8 @@
     "test": "pnpm -r test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev": "node scripts/dev.mjs"
+    "dev": "node scripts/dev.mjs",
+    "test:e2e": "pnpm --filter @huggingface/transformers test:e2e"
   },
   "repository": {
     "type": "git",

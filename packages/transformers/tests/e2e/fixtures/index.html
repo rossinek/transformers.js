@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Whisper E2E Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 1.4rem; margin-bottom: 24px; }
+    #status { font-size: 1.1rem; font-weight: 600; color: #555; }
+    #status .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin .6s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #log { margin-top: 16px; font-size: 0.85rem; color: #777; line-height: 1.6; }
+    #log .entry { padding: 2px 0; }
+    #log .entry .time { color: #aaa; margin-right: 6px; }
+    #result { margin-top: 20px; padding: 12px; background: #f5f5f5; border-radius: 6px; font-size: 0.9rem; white-space: pre-wrap; display: none; }
+  </style>
+</head>
+<body>
+  <h1>Whisper E2E Test</h1>
+  <div id="status">Initializing...</div>
+  <div id="log"></div>
+  <div id="result"></div>
+
+  <script type="module">
+    import { pipeline, env } from "/dist/transformers.js";
+
+    env.backends.onnx.wasm.wasmPaths = "/wasm/";
+
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const resultEl = document.getElementById("result");
+    const t0 = performance.now();
+
+    function setStatus(msg) {
+      statusEl.innerHTML = `<span class="spinner"></span>${msg}`;
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      logEl.innerHTML += `<div class="entry"><span class="time">${elapsed}s</span>${msg}</div>`;
+    }
+
+    function setDone(msg) {
+      statusEl.innerHTML = msg;
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      logEl.innerHTML += `<div class="entry"><span class="time">${elapsed}s</span>${msg}</div>`;
+    }
+
+    window.setStatus = setStatus;
+    window.setDone = setDone;
+    window.showResult = (text) => { resultEl.style.display = "block"; resultEl.textContent = text; };
+
+    window.transformers = { pipeline, env };
+
+    class AudioProcessor {
+      constructor() {
+        this.SAMPLE_RATE = 16000;
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+          sampleRate: this.SAMPLE_RATE,
+        });
+      }
+      async processMediaUrl(url) {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        return this.processArrayBuffer(arrayBuffer);
+      }
+      async processArrayBuffer(buffer) {
+        const audioBuffer = await this.audioContext.decodeAudioData(buffer);
+        return this.processAudioBuffer(audioBuffer);
+      }
+      processAudioBuffer(audioBuffer) {
+        if (audioBuffer.numberOfChannels === 2) {
+          const SCALING_FACTOR = Math.sqrt(2);
+          const left = audioBuffer.getChannelData(0);
+          const right = audioBuffer.getChannelData(1);
+          const audio = new Float32Array(left.length);
+          for (let i = 0; i < audioBuffer.length; ++i) {
+            audio[i] = Math.max(-1, Math.min(SCALING_FACTOR * (left[i] + right[i]) / 2, 1));
+          }
+          return audio;
+        }
+        return audioBuffer.getChannelData(0);
+      }
+    }
+
+    window.AudioProcessor = AudioProcessor;
+
+    setDone("Ready");
+    window.__READY__ = true;
+  </script>
+</body>
+</html>

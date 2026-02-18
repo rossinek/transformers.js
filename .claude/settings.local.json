@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(ln -s:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm exec playwright:*)",
+      "Bash(pnpm test:e2e:*)"
+    ]
+  }
+}
