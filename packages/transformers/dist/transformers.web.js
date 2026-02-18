@@ -25175,7 +25175,7 @@ Pipeline {
     const generation_config = { ...kwargs };
     if (return_timestamps === "word") {
       generation_config["return_token_timestamps"] = true;
-      generation_config["return_timestamps"] = false;
+      generation_config["return_timestamps"] = true;
     }
     const single = !Array.isArray(audio);
     const batchedAudio = single ? [audio] : audio;
