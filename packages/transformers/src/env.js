@@ -29,7 +29,7 @@ import url from 'node:url';
 const VERSION = '4.0.0-next.4';
 
 const IS_PROCESS_AVAILABLE = typeof process !== 'undefined';
-const IS_NODE_ENV = IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
+const IS_NODE_ENV = false; // IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
 const IS_FS_AVAILABLE = !isEmpty(fs);
 const IS_PATH_AVAILABLE = !isEmpty(path);
 
