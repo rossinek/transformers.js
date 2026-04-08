@@ -403,17 +403,31 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     );
                 }
 
-                // Always match by token equality only. The DTW-based token timestamps
-                // are too noisy (especially with fp16/quantized models) for strict
-                // temporal ordering — using them here causes valid matches to be
-                // rejected, leading to wrong merge points and dropped words.
-                // Timestamp sequences are still tracked and split in parallel below.
-                const matches = left.filter((elem, idx) => elem === right[idx]).length;
+                // Token equality is the primary match criterion. Using timestamps
+                // as a hard filter (as in the original Python impl) causes valid
+                // matches to be rejected with noisy DTW timestamps (fp16/quantized),
+                // leading to wrong merge points and dropped words.
+                const token_matches = left.filter((elem, idx) => elem === right[idx]).length;
+
+                // When timestamps are available, add a small bonus for matches
+                // where timestamps are also monotonically ordered. This breaks
+                // ties in favor of merge points with coherent timing, but can
+                // never override a better token match.
+                let timestamp_bonus = 0;
+                if (use_token_timestamp_sequences && token_matches > 0) {
+                    const ordered = left.filter(
+                        (elem, idx) =>
+                            elem === right[idx] &&
+                            left_token_timestamp_sequence[leftStart + idx] <=
+                                token_timestamp_sequences[i][rightStart + idx],
+                    ).length;
+                    timestamp_bonus = (ordered / token_matches) * 0.1;
+                }
 
                 // epsilon to favor long perfect matches
                 const eps = j / 10000.0;
-                const matching = matches / j + eps;
-                if (matches > 1 && matching > max) {
+                const matching = token_matches / j + timestamp_bonus + eps;
+                if (token_matches > 1 && matching > max) {
                     max = matching;
                     maxIndices = [leftStart, leftStop, rightStart, rightStop];
                 }

@@ -1,0 +1,1851 @@
+{
+  "office": {
+    "text": " Well, some of us are trying to... I'll just turn the captions on.",
+    "chunks": [
+      {
+        "text": " Well,",
+        "timestamp": [
+          0,
+          0.12
+        ]
+      },
+      {
+        "text": " some",
+        "timestamp": [
+          0.22,
+          0.3
+        ]
+      },
+      {
+        "text": " of",
+        "timestamp": [
+          0.3,
+          0.44
+        ]
+      },
+      {
+        "text": " us",
+        "timestamp": [
+          0.44,
+          0.62
+        ]
+      },
+      {
+        "text": " are",
+        "timestamp": [
+          0.62,
+          0.74
+        ]
+      },
+      {
+        "text": " trying",
+        "timestamp": [
+          0.74,
+          0.98
+        ]
+      },
+      {
+        "text": " to",
+        "timestamp": [
+          0.98,
+          1.16
+        ]
+      },
+      {
+        "text": "...",
+        "timestamp": [
+          1.16,
+          1.18
+        ]
+      },
+      {
+        "text": " I'll",
+        "timestamp": [
+          1.96,
+          2.12
+        ]
+      },
+      {
+        "text": " just",
+        "timestamp": [
+          2.12,
+          2.26
+        ]
+      },
+      {
+        "text": " turn",
+        "timestamp": [
+          2.26,
+          2.46
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          2.46,
+          2.62
+        ]
+      },
+      {
+        "text": " captions",
+        "timestamp": [
+          2.62,
+          3.04
+        ]
+      },
+      {
+        "text": " on.",
+        "timestamp": [
+          3.04,
+          3.44
+        ]
+      }
+    ]
+  },
+  "lucy": {
+    "text": " Why did you break that dish? Well, I'm sorry, but it said try our unbreakable dishes, so I just picked them up and I just tapped them. You did it again. I just picked them up and I just tapped them. You did it again. Well, for heaven's sake, why does it say unbreakable when they're breakable? Those are unbreakable. These are important Chinese. Unbreakable. You should know. These are the unbreakable? Guaranteed.",
+    "chunks": [
+      {
+        "text": " Why",
+        "timestamp": [
+          0,
+          13.58
+        ]
+      },
+      {
+        "text": " did",
+        "timestamp": [
+          13.58,
+          14.12
+        ]
+      },
+      {
+        "text": " you",
+        "timestamp": [
+          14.12,
+          14.28
+        ]
+      },
+      {
+        "text": " break",
+        "timestamp": [
+          14.28,
+          14.58
+        ]
+      },
+      {
+        "text": " that",
+        "timestamp": [
+          14.58,
+          14.92
+        ]
+      },
+      {
+        "text": " dish?",
+        "timestamp": [
+          14.92,
+          15.4
+        ]
+      },
+      {
+        "text": " Well,",
+        "timestamp": [
+          15.6,
+          15.76
+        ]
+      },
+      {
+        "text": " I'm",
+        "timestamp": [
+          15.82,
+          15.92
+        ]
+      },
+      {
+        "text": " sorry,",
+        "timestamp": [
+          15.92,
+          16.36
+        ]
+      },
+      {
+        "text": " but",
+        "timestamp": [
+          16.4,
+          16.58
+        ]
+      },
+      {
+        "text": " it",
+        "timestamp": [
+          16.58,
+          16.72
+        ]
+      },
+      {
+        "text": " said",
+        "timestamp": [
+          16.72,
+          16.94
+        ]
+      },
+      {
+        "text": " try",
+        "timestamp": [
+          16.94,
+          17.22
+        ]
+      },
+      {
+        "text": " our",
+        "timestamp": [
+          17.22,
+          17.54
+        ]
+      },
+      {
+        "text": " unbreakable",
+        "timestamp": [
+          17.54,
+          18.24
+        ]
+      },
+      {
+        "text": " dishes,",
+        "timestamp": [
+          18.24,
+          18.64
+        ]
+      },
+      {
+        "text": " so",
+        "timestamp": [
+          18.68,
+          19
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          19,
+          19.18
+        ]
+      },
+      {
+        "text": " just",
+        "timestamp": [
+          19.18,
+          20
+        ]
+      },
+      {
+        "text": " picked",
+        "timestamp": [
+          20,
+          20.54
+        ]
+      },
+      {
+        "text": " them",
+        "timestamp": [
+          20.54,
+          20.72
+        ]
+      },
+      {
+        "text": " up",
+        "timestamp": [
+          20.72,
+          20.94
+        ]
+      },
+      {
+        "text": " and",
+        "timestamp": [
+          20.94,
+          21.08
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          21.08,
+          21.18
+        ]
+      },
+      {
+        "text": " just",
+        "timestamp": [
+          21.18,
+          21.4
+        ]
+      },
+      {
+        "text": " tapped",
+        "timestamp": [
+          21.4,
+          21.74
+        ]
+      },
+      {
+        "text": " them.",
+        "timestamp": [
+          21.74,
+          22.02
+        ]
+      },
+      {
+        "text": " You",
+        "timestamp": [
+          25.08,
+          25.34
+        ]
+      },
+      {
+        "text": " did",
+        "timestamp": [
+          25.34,
+          25.62
+        ]
+      },
+      {
+        "text": " it",
+        "timestamp": [
+          25.62,
+          25.88
+        ]
+      },
+      {
+        "text": " again.",
+        "timestamp": [
+          25.88,
+          26.24
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          20,
+          20
+        ]
+      },
+      {
+        "text": " just",
+        "timestamp": [
+          20,
+          20.06
+        ]
+      },
+      {
+        "text": " picked",
+        "timestamp": [
+          20.06,
+          20.56
+        ]
+      },
+      {
+        "text": " them",
+        "timestamp": [
+          20.56,
+          20.74
+        ]
+      },
+      {
+        "text": " up",
+        "timestamp": [
+          20.74,
+          20.92
+        ]
+      },
+      {
+        "text": " and",
+        "timestamp": [
+          20.92,
+          21.08
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          21.08,
+          21.18
+        ]
+      },
+      {
+        "text": " just",
+        "timestamp": [
+          21.18,
+          21.4
+        ]
+      },
+      {
+        "text": " tapped",
+        "timestamp": [
+          21.4,
+          21.74
+        ]
+      },
+      {
+        "text": " them.",
+        "timestamp": [
+          21.74,
+          22.06
+        ]
+      },
+      {
+        "text": " You",
+        "timestamp": [
+          25,
+          25.36
+        ]
+      },
+      {
+        "text": " did",
+        "timestamp": [
+          25.36,
+          25.6
+        ]
+      },
+      {
+        "text": " it",
+        "timestamp": [
+          25.6,
+          25.88
+        ]
+      },
+      {
+        "text": " again.",
+        "timestamp": [
+          25.88,
+          26.28
+        ]
+      },
+      {
+        "text": " Well,",
+        "timestamp": [
+          26.48,
+          26.68
+        ]
+      },
+      {
+        "text": " for",
+        "timestamp": [
+          26.8,
+          26.9
+        ]
+      },
+      {
+        "text": " heaven's",
+        "timestamp": [
+          26.9,
+          27.44
+        ]
+      },
+      {
+        "text": " sake,",
+        "timestamp": [
+          27.44,
+          27.64
+        ]
+      },
+      {
+        "text": " why",
+        "timestamp": [
+          27.7,
+          27.84
+        ]
+      },
+      {
+        "text": " does",
+        "timestamp": [
+          27.84,
+          28
+        ]
+      },
+      {
+        "text": " it",
+        "timestamp": [
+          28,
+          28.14
+        ]
+      },
+      {
+        "text": " say",
+        "timestamp": [
+          28.14,
+          28.42
+        ]
+      },
+      {
+        "text": " unbreakable",
+        "timestamp": [
+          28.42,
+          29.36
+        ]
+      },
+      {
+        "text": " when",
+        "timestamp": [
+          29.36,
+          29.54
+        ]
+      },
+      {
+        "text": " they're",
+        "timestamp": [
+          29.54,
+          29.72
+        ]
+      },
+      {
+        "text": " breakable?",
+        "timestamp": [
+          29.72,
+          30.38
+        ]
+      },
+      {
+        "text": " Those",
+        "timestamp": [
+          30.78,
+          31.16
+        ]
+      },
+      {
+        "text": " are",
+        "timestamp": [
+          31.16,
+          31.76
+        ]
+      },
+      {
+        "text": " unbreakable.",
+        "timestamp": [
+          31.76,
+          32.6
+        ]
+      },
+      {
+        "text": " These",
+        "timestamp": [
+          33.76,
+          34.1
+        ]
+      },
+      {
+        "text": " are",
+        "timestamp": [
+          34.1,
+          34.72
+        ]
+      },
+      {
+        "text": " important",
+        "timestamp": [
+          34.72,
+          35.4
+        ]
+      },
+      {
+        "text": " Chinese.",
+        "timestamp": [
+          35.4,
+          35.94
+        ]
+      },
+      {
+        "text": " Unbreakable.",
+        "timestamp": [
+          37.26,
+          38.44
+        ]
+      },
+      {
+        "text": " You",
+        "timestamp": [
+          38.94,
+          39.26
+        ]
+      },
+      {
+        "text": " should",
+        "timestamp": [
+          39.26,
+          39.54
+        ]
+      },
+      {
+        "text": " know.",
+        "timestamp": [
+          39.54,
+          40
+        ]
+      },
+      {
+        "text": " These",
+        "timestamp": [
+          42.6,
+          42.84
+        ]
+      },
+      {
+        "text": " are",
+        "timestamp": [
+          42.84,
+          42.96
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          42.96,
+          43.1
+        ]
+      },
+      {
+        "text": " unbreakable?",
+        "timestamp": [
+          43.1,
+          43.88
+        ]
+      },
+      {
+        "text": " Guaranteed.",
+        "timestamp": [
+          44.16,
+          45
+        ]
+      }
+    ]
+  },
+  "regan-joke": {
+    "text": " I don't know whether you know it or not, but I have a new hobby. I am collecting stories that I can actually prove are told among the Russian people. They make them up themselves, they tell them between themselves, reveals they've got a great sense of humor, and they've also got a little cynical attitude about things in their country. And one of these stories, the one I'm going to tell you, I told to General Secretary Gorbachev. And he laughed. The story was an American and a Russian arguing about their two countries. And the American said, \"Look, in my country I can walk into the Oval Office, I can pound the President's desk and say, 'Mr. President, I don't like the way you're running our country.' And the Russian said, I can do that. The Americans said, you can? He says, yes. I can go into the Kremlin, to the General Secretary's office, pound his desk, and say, Mr. General Secretary, I don't like the way President Reagan's running his country.",
+    "chunks": [
+      {
+        "text": " I",
+        "timestamp": [
+          0,
+          1.08
+        ]
+      },
+      {
+        "text": " don't",
+        "timestamp": [
+          1.08,
+          1.24
+        ]
+      },
+      {
+        "text": " know",
+        "timestamp": [
+          1.24,
+          1.32
+        ]
+      },
+      {
+        "text": " whether",
+        "timestamp": [
+          1.32,
+          1.46
+        ]
+      },
+      {
+        "text": " you",
+        "timestamp": [
+          1.46,
+          1.6
+        ]
+      },
+      {
+        "text": " know",
+        "timestamp": [
+          1.6,
+          1.8
+        ]
+      },
+      {
+        "text": " it",
+        "timestamp": [
+          1.8,
+          1.94
+        ]
+      },
+      {
+        "text": " or",
+        "timestamp": [
+          1.94,
+          2
+        ]
+      },
+      {
+        "text": " not,",
+        "timestamp": [
+          2,
+          2.16
+        ]
+      },
+      {
+        "text": " but",
+        "timestamp": [
+          2.28,
+          2.34
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          2.34,
+          2.5
+        ]
+      },
+      {
+        "text": " have",
+        "timestamp": [
+          2.5,
+          2.62
+        ]
+      },
+      {
+        "text": " a",
+        "timestamp": [
+          2.62,
+          2.7
+        ]
+      },
+      {
+        "text": " new",
+        "timestamp": [
+          2.7,
+          2.84
+        ]
+      },
+      {
+        "text": " hobby.",
+        "timestamp": [
+          2.84,
+          3.3
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          3.98,
+          4.24
+        ]
+      },
+      {
+        "text": " am",
+        "timestamp": [
+          4.24,
+          4.56
+        ]
+      },
+      {
+        "text": " collecting",
+        "timestamp": [
+          4.56,
+          5.04
+        ]
+      },
+      {
+        "text": " stories",
+        "timestamp": [
+          5.04,
+          5.72
+        ]
+      },
+      {
+        "text": " that",
+        "timestamp": [
+          5.72,
+          6.4
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          6.4,
+          6.56
+        ]
+      },
+      {
+        "text": " can",
+        "timestamp": [
+          6.56,
+          6.8
+        ]
+      },
+      {
+        "text": " actually",
+        "timestamp": [
+          6.8,
+          7.54
+        ]
+      },
+      {
+        "text": " prove",
+        "timestamp": [
+          7.54,
+          8.06
+        ]
+      },
+      {
+        "text": " are",
+        "timestamp": [
+          8.06,
+          8.44
+        ]
+      },
+      {
+        "text": " told",
+        "timestamp": [
+          8.44,
+          8.88
+        ]
+      },
+      {
+        "text": " among",
+        "timestamp": [
+          8.88,
+          9.4
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          9.4,
+          9.7
+        ]
+      },
+      {
+        "text": " Russian",
+        "timestamp": [
+          9.7,
+          10
+        ]
+      },
+      {
+        "text": " people.",
+        "timestamp": [
+          10,
+          10.44
+        ]
+      },
+      {
+        "text": " They",
+        "timestamp": [
+          11.02,
+          11.22
+        ]
+      },
+      {
+        "text": " make",
+        "timestamp": [
+          11.22,
+          11.46
+        ]
+      },
+      {
+        "text": " them",
+        "timestamp": [
+          11.46,
+          11.64
+        ]
+      },
+      {
+        "text": " up",
+        "timestamp": [
+          11.64,
+          11.8
+        ]
+      },
+      {
+        "text": " themselves,",
+        "timestamp": [
+          11.8,
+          12.2
+        ]
+      },
+      {
+        "text": " they",
+        "timestamp": [
+          12.46,
+          12.58
+        ]
+      },
+      {
+        "text": " tell",
+        "timestamp": [
+          12.58,
+          12.82
+        ]
+      },
+      {
+        "text": " them",
+        "timestamp": [
+          12.82,
+          12.94
+        ]
+      },
+      {
+        "text": " between",
+        "timestamp": [
+          12.94,
+          13.2
+        ]
+      },
+      {
+        "text": " themselves,",
+        "timestamp": [
+          13.2,
+          13.68
+        ]
+      },
+      {
+        "text": " reveals",
+        "timestamp": [
+          13.92,
+          14.16
+        ]
+      },
+      {
+        "text": " they've",
+        "timestamp": [
+          14.16,
+          14.46
+        ]
+      },
+      {
+        "text": " got",
+        "timestamp": [
+          14.46,
+          14.52
+        ]
+      },
+      {
+        "text": " a",
+        "timestamp": [
+          14.52,
+          14.6
+        ]
+      },
+      {
+        "text": " great",
+        "timestamp": [
+          14.6,
+          14.78
+        ]
+      },
+      {
+        "text": " sense",
+        "timestamp": [
+          14.78,
+          15.02
+        ]
+      },
+      {
+        "text": " of",
+        "timestamp": [
+          15.02,
+          15.24
+        ]
+      },
+      {
+        "text": " humor,",
+        "timestamp": [
+          15.24,
+          15.5
+        ]
+      },
+      {
+        "text": " and",
+        "timestamp": [
+          16.42,
+          16.62
+        ]
+      },
+      {
+        "text": " they've",
+        "timestamp": [
+          16.62,
+          16.9
+        ]
+      },
+      {
+        "text": " also",
+        "timestamp": [
+          16.9,
+          17.1
+        ]
+      },
+      {
+        "text": " got",
+        "timestamp": [
+          17.1,
+          17.34
+        ]
+      },
+      {
+        "text": " a",
+        "timestamp": [
+          17.34,
+          17.48
+        ]
+      },
+      {
+        "text": " little",
+        "timestamp": [
+          17.48,
+          17.6
+        ]
+      },
+      {
+        "text": " cynical",
+        "timestamp": [
+          17.6,
+          17.9
+        ]
+      },
+      {
+        "text": " attitude",
+        "timestamp": [
+          17.9,
+          18.34
+        ]
+      },
+      {
+        "text": " about",
+        "timestamp": [
+          18.34,
+          18.66
+        ]
+      },
+      {
+        "text": " things",
+        "timestamp": [
+          18.66,
+          18.98
+        ]
+      },
+      {
+        "text": " in",
+        "timestamp": [
+          18.98,
+          19.2
+        ]
+      },
+      {
+        "text": " their",
+        "timestamp": [
+          19.2,
+          19.34
+        ]
+      },
+      {
+        "text": " country.",
+        "timestamp": [
+          19.34,
+          19.72
+        ]
+      },
+      {
+        "text": " And",
+        "timestamp": [
+          20.7,
+          20.9
+        ]
+      },
+      {
+        "text": " one",
+        "timestamp": [
+          20.9,
+          21.34
+        ]
+      },
+      {
+        "text": " of",
+        "timestamp": [
+          21.34,
+          21.42
+        ]
+      },
+      {
+        "text": " these",
+        "timestamp": [
+          21.42,
+          21.56
+        ]
+      },
+      {
+        "text": " stories,",
+        "timestamp": [
+          21.56,
+          21.94
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          22.06,
+          22.1
+        ]
+      },
+      {
+        "text": " one",
+        "timestamp": [
+          22.1,
+          22.2
+        ]
+      },
+      {
+        "text": " I'm",
+        "timestamp": [
+          22.2,
+          22.34
+        ]
+      },
+      {
+        "text": " going",
+        "timestamp": [
+          22.34,
+          22.44
+        ]
+      },
+      {
+        "text": " to",
+        "timestamp": [
+          22.44,
+          22.52
+        ]
+      },
+      {
+        "text": " tell",
+        "timestamp": [
+          22.52,
+          22.7
+        ]
+      },
+      {
+        "text": " you,",
+        "timestamp": [
+          22.7,
+          22.82
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          22.88,
+          22.98
+        ]
+      },
+      {
+        "text": " told",
+        "timestamp": [
+          22.98,
+          23.32
+        ]
+      },
+      {
+        "text": " to",
+        "timestamp": [
+          23.32,
+          24.44
+        ]
+      },
+      {
+        "text": " General",
+        "timestamp": [
+          24.44,
+          25.02
+        ]
+      },
+      {
+        "text": " Secretary",
+        "timestamp": [
+          25.02,
+          25.42
+        ]
+      },
+      {
+        "text": " Gorbachev.",
+        "timestamp": [
+          25.52,
+          26.3
+        ]
+      },
+      {
+        "text": " And",
+        "timestamp": [
+          27.1,
+          27.26
+        ]
+      },
+      {
+        "text": " he",
+        "timestamp": [
+          27.26,
+          27.38
+        ]
+      },
+      {
+        "text": " laughed.",
+        "timestamp": [
+          27.38,
+          27.78
+        ]
+      },
+      {
+        "text": " The",
+        "timestamp": [
+          30.44,
+          30.6
+        ]
+      },
+      {
+        "text": " story",
+        "timestamp": [
+          30.6,
+          30.94
+        ]
+      },
+      {
+        "text": " was",
+        "timestamp": [
+          30.94,
+          31.16
+        ]
+      },
+      {
+        "text": " an",
+        "timestamp": [
+          31.16,
+          31.3
+        ]
+      },
+      {
+        "text": " American",
+        "timestamp": [
+          31.3,
+          31.68
+        ]
+      },
+      {
+        "text": " and",
+        "timestamp": [
+          31.68,
+          31.88
+        ]
+      },
+      {
+        "text": " a",
+        "timestamp": [
+          31.88,
+          32
+        ]
+      },
+      {
+        "text": " Russian",
+        "timestamp": [
+          32,
+          32.26
+        ]
+      },
+      {
+        "text": " arguing",
+        "timestamp": [
+          32.26,
+          32.68
+        ]
+      },
+      {
+        "text": " about",
+        "timestamp": [
+          32.68,
+          32.98
+        ]
+      },
+      {
+        "text": " their",
+        "timestamp": [
+          32.98,
+          33.2
+        ]
+      },
+      {
+        "text": " two",
+        "timestamp": [
+          33.2,
+          33.36
+        ]
+      },
+      {
+        "text": " countries.",
+        "timestamp": [
+          33.36,
+          33.78
+        ]
+      },
+      {
+        "text": " And",
+        "timestamp": [
+          33.94,
+          34
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          34,
+          34.1
+        ]
+      },
+      {
+        "text": " American",
+        "timestamp": [
+          34.1,
+          34.42
+        ]
+      },
+      {
+        "text": " said,",
+        "timestamp": [
+          34.42,
+          34.74
+        ]
+      },
+      {
+        "text": " \"Look,",
+        "timestamp": [
+          34.8,
+          35.02
+        ]
+      },
+      {
+        "text": " in",
+        "timestamp": [
+          35.32,
+          35.84
+        ]
+      },
+      {
+        "text": " my",
+        "timestamp": [
+          35.84,
+          36.08
+        ]
+      },
+      {
+        "text": " country",
+        "timestamp": [
+          36.08,
+          36.42
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          36.42,
+          36.62
+        ]
+      },
+      {
+        "text": " can",
+        "timestamp": [
+          36.62,
+          36.8
+        ]
+      },
+      {
+        "text": " walk",
+        "timestamp": [
+          36.8,
+          37.04
+        ]
+      },
+      {
+        "text": " into",
+        "timestamp": [
+          37.04,
+          37.26
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          37.26,
+          37.4
+        ]
+      },
+      {
+        "text": " Oval",
+        "timestamp": [
+          37.4,
+          37.68
+        ]
+      },
+      {
+        "text": " Office,",
+        "timestamp": [
+          37.68,
+          37.98
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          37.98,
+          38.12
+        ]
+      },
+      {
+        "text": " can",
+        "timestamp": [
+          38.12,
+          38.26
+        ]
+      },
+      {
+        "text": " pound",
+        "timestamp": [
+          38.26,
+          38.56
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          38.58,
+          38.76
+        ]
+      },
+      {
+        "text": " President's",
+        "timestamp": [
+          38.76,
+          39.2
+        ]
+      },
+      {
+        "text": " desk",
+        "timestamp": [
+          39.2,
+          39.44
+        ]
+      },
+      {
+        "text": " and",
+        "timestamp": [
+          39.44,
+          39.62
+        ]
+      },
+      {
+        "text": " say,",
+        "timestamp": [
+          39.62,
+          39.8
+        ]
+      },
+      {
+        "text": " 'Mr.",
+        "timestamp": [
+          39.88,
+          40.04
+        ]
+      },
+      {
+        "text": " President,",
+        "timestamp": [
+          40.2,
+          40.5
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          40.64,
+          41.06
+        ]
+      },
+      {
+        "text": " don't",
+        "timestamp": [
+          41.06,
+          41.26
+        ]
+      },
+      {
+        "text": " like",
+        "timestamp": [
+          41.26,
+          41.44
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          41.44,
+          41.58
+        ]
+      },
+      {
+        "text": " way",
+        "timestamp": [
+          41.58,
+          41.76
+        ]
+      },
+      {
+        "text": " you're",
+        "timestamp": [
+          41.76,
+          42.02
+        ]
+      },
+      {
+        "text": " running",
+        "timestamp": [
+          42.02,
+          42.26
+        ]
+      },
+      {
+        "text": " our",
+        "timestamp": [
+          42.26,
+          42.48
+        ]
+      },
+      {
+        "text": " country",
+        "timestamp": [
+          42.48,
+          42.86
+        ]
+      },
+      {
+        "text": ".'",
+        "timestamp": [
+          42.86,
+          42.88
+        ]
+      },
+      {
+        "text": " And",
+        "timestamp": [
+          43.18,
+          44.08
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          44.08,
+          44.2
+        ]
+      },
+      {
+        "text": " Russian",
+        "timestamp": [
+          44.2,
+          44.4
+        ]
+      },
+      {
+        "text": " said,",
+        "timestamp": [
+          44.4,
+          44.68
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          44.74,
+          44.8
+        ]
+      },
+      {
+        "text": " can",
+        "timestamp": [
+          44.8,
+          44.96
+        ]
+      },
+      {
+        "text": " do",
+        "timestamp": [
+          44.96,
+          45.1
+        ]
+      },
+      {
+        "text": " that.",
+        "timestamp": [
+          45.1,
+          45.44
+        ]
+      },
+      {
+        "text": " The",
+        "timestamp": [
+          46.36,
+          46.52
+        ]
+      },
+      {
+        "text": " Americans",
+        "timestamp": [
+          46.52,
+          46.78
+        ]
+      },
+      {
+        "text": " said,",
+        "timestamp": [
+          46.78,
+          46.96
+        ]
+      },
+      {
+        "text": " you",
+        "timestamp": [
+          47,
+          47.06
+        ]
+      },
+      {
+        "text": " can?",
+        "timestamp": [
+          47.06,
+          47.4
+        ]
+      },
+      {
+        "text": " He",
+        "timestamp": [
+          47.54,
+          47.72
+        ]
+      },
+      {
+        "text": " says,",
+        "timestamp": [
+          47.72,
+          47.92
+        ]
+      },
+      {
+        "text": " yes.",
+        "timestamp": [
+          48.02,
+          48.32
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          48.8,
+          48.96
+        ]
+      },
+      {
+        "text": " can",
+        "timestamp": [
+          48.96,
+          49.14
+        ]
+      },
+      {
+        "text": " go",
+        "timestamp": [
+          49.14,
+          49.3
+        ]
+      },
+      {
+        "text": " into",
+        "timestamp": [
+          49.3,
+          49.42
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          49.42,
+          49.54
+        ]
+      },
+      {
+        "text": " Kremlin,",
+        "timestamp": [
+          49.54,
+          49.86
+        ]
+      },
+      {
+        "text": " to",
+        "timestamp": [
+          49.9,
+          50
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          50,
+          50.1
+        ]
+      },
+      {
+        "text": " General",
+        "timestamp": [
+          50.1,
+          50.34
+        ]
+      },
+      {
+        "text": " Secretary's",
+        "timestamp": [
+          50.34,
+          51.06
+        ]
+      },
+      {
+        "text": " office,",
+        "timestamp": [
+          51.06,
+          51.32
+        ]
+      },
+      {
+        "text": " pound",
+        "timestamp": [
+          51.48,
+          51.76
+        ]
+      },
+      {
+        "text": " his",
+        "timestamp": [
+          51.76,
+          51.96
+        ]
+      },
+      {
+        "text": " desk,",
+        "timestamp": [
+          51.96,
+          52.28
+        ]
+      },
+      {
+        "text": " and",
+        "timestamp": [
+          52.3,
+          52.44
+        ]
+      },
+      {
+        "text": " say,",
+        "timestamp": [
+          52.44,
+          52.62
+        ]
+      },
+      {
+        "text": " Mr.",
+        "timestamp": [
+          52.66,
+          52.88
+        ]
+      },
+      {
+        "text": " General",
+        "timestamp": [
+          52.98,
+          53.14
+        ]
+      },
+      {
+        "text": " Secretary,",
+        "timestamp": [
+          53.14,
+          53.56
+        ]
+      },
+      {
+        "text": " I",
+        "timestamp": [
+          54.3,
+          54.46
+        ]
+      },
+      {
+        "text": " don't",
+        "timestamp": [
+          54.46,
+          54.62
+        ]
+      },
+      {
+        "text": " like",
+        "timestamp": [
+          54.62,
+          54.8
+        ]
+      },
+      {
+        "text": " the",
+        "timestamp": [
+          54.8,
+          54.92
+        ]
+      },
+      {
+        "text": " way",
+        "timestamp": [
+          54.92,
+          55.08
+        ]
+      },
+      {
+        "text": " President",
+        "timestamp": [
+          55.08,
+          55.44
+        ]
+      },
+      {
+        "text": " Reagan's",
+        "timestamp": [
+          55.44,
+          56
+        ]
+      },
+      {
+        "text": " running",
+        "timestamp": [
+          56,
+          56.26
+        ]
+      },
+      {
+        "text": " his",
+        "timestamp": [
+          56.26,
+          56.44
+        ]
+      },
+      {
+        "text": " country.",
+        "timestamp": [
+          56.44,
+          56.78
+        ]
+      }
+    ]
+  }
+}

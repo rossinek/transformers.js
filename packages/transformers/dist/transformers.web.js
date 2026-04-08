@@ -10645,10 +10645,17 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
             "There is a bug within whisper `decode_asr` function, please report it. Dropping to prevent bad inference."
           );
         }
-        const matches = left.filter((elem, idx) => elem === right[idx]).length;
+        const token_matches = left.filter((elem, idx) => elem === right[idx]).length;
+        let timestamp_bonus = 0;
+        if (use_token_timestamp_sequences && token_matches > 0) {
+          const ordered = left.filter(
+            (elem, idx) => elem === right[idx] && left_token_timestamp_sequence[leftStart2 + idx] <= token_timestamp_sequences[i][rightStart2 + idx]
+          ).length;
+          timestamp_bonus = ordered / token_matches * 0.1;
+        }
         const eps = j / 1e4;
-        const matching = matches / j + eps;
-        if (matches > 1 && matching > max2) {
+        const matching = token_matches / j + timestamp_bonus + eps;
+        if (token_matches > 1 && matching > max2) {
           max2 = matching;
           maxIndices = [leftStart2, leftStop2, rightStart2, rightStop2];
         }

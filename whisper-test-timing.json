@@ -1,0 +1,17 @@
+{
+  "office": {
+    "audioLengthS": 3.6,
+    "transcriptionTimeMs": 1288,
+    "wordCount": 14
+  },
+  "lucy": {
+    "audioLengthS": 52.7,
+    "transcriptionTimeMs": 5283,
+    "wordCount": 73
+  },
+  "regan-joke": {
+    "audioLengthS": 61,
+    "transcriptionTimeMs": 8037,
+    "wordCount": 175
+  }
+}
