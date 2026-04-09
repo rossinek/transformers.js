@@ -41,7 +41,7 @@ const IS_BUN_RUNTIME = typeof globalThis.Bun !== 'undefined';
 const IS_DENO_WEB_RUNTIME = IS_DENO_RUNTIME && IS_WEB_CACHE_AVAILABLE && !IS_FS_AVAILABLE;
 
 const IS_PROCESS_AVAILABLE = typeof process !== 'undefined';
-const IS_NODE_ENV = IS_PROCESS_AVAILABLE && process?.release?.name === 'node' && !IS_DENO_WEB_RUNTIME;
+const IS_NODE_ENV = false; // IS_PROCESS_AVAILABLE && process?.release?.name === 'node' && !IS_DENO_WEB_RUNTIME;
 
 // Check if various APIs are available (depends on environment)
 const IS_BROWSER_ENV = typeof window !== 'undefined' && typeof window.document !== 'undefined';
