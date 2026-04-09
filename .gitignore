@@ -14,3 +14,10 @@ package-lock.json
 
 # Do not track coverage reports
 packages/*/coverage
+
+# Environment variables
+.env
+
+# Local-only Whisper benchmark data
+packages/transformers/tests/e2e/ground-truth/
+packages/transformers/tests/e2e/fixtures/*.wav

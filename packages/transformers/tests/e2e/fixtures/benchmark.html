@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Whisper Benchmark</title>
+  <style>
+    :root {
+      --bg: #fafafa; --fg: #1a1a1a; --muted: #666; --border: #ddd;
+      --green: #22863a; --red: #cb2431; --yellow: #b08800;
+      --card-bg: #fff; --hover-bg: #f0f0f0;
+      --gt-color: #0550ae; --gt-bg: #ddf4ff; --gt-border: #a8d1f0;
+      --model-color: #6f5700; --model-bg: #fff8c5; --model-border: #e0d48a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.5; }
+
+    header { padding: 16px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--card-bg); }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header .status { font-size: 0.85rem; color: var(--muted); }
+    header .actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); font-size: 0.82rem; cursor: pointer; font-weight: 500; }
+    .btn:hover { background: var(--hover-bg); }
+    .btn.primary { background: #0969da; color: #fff; border-color: #0969da; }
+    .btn.primary:hover { background: #0860c4; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .container { max-width: 100%; margin: 0 auto; padding: 20px 32px; }
+
+    /* Clip tabs */
+    .clip-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; }
+    .clip-tab { padding: 6px 16px; font-size: 0.82rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--muted); font-weight: 500; }
+    .clip-tab:hover { color: var(--fg); }
+    .clip-tab.active { color: var(--fg); border-bottom-color: #0969da; }
+    .clip-tab .badge { font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; background: #eee; margin-left: 4px; }
+    .clip-tab .badge.done { background: #dcffe4; color: var(--green); }
+
+    /* Upload area */
+    .upload-area { border: 2px dashed var(--border); border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 16px; transition: border-color 0.2s; font-size: 0.85rem; }
+    .upload-area.dragover { border-color: #0969da; background: #f0f7ff; }
+    .upload-area input[type="file"] { display: none; }
+    .upload-area label { cursor: pointer; color: #0969da; font-weight: 500; }
+    .upload-form { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+    .upload-form input[type="text"], .upload-form select { padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; }
+    .upload-form input[type="text"] { width: 150px; }
+
+    /* Audio player */
+    .player { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+    .player .play-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: var(--card-bg); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .player .play-btn:hover { background: var(--hover-bg); }
+    .player .time { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 90px; }
+    .player .speed-btn { font-size: 0.72rem; padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--card-bg); cursor: pointer; }
+    .player .speed-btn.active { background: #0969da; color: #fff; border-color: #0969da; }
+
+    /* Timeline */
+    .timeline-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+    .timeline-header { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; font-size: 0.8rem; }
+    .timeline-header .legend { display: flex; gap: 12px; }
+    .timeline-header .legend-item { display: flex; align-items: center; gap: 4px; }
+    .timeline-header .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+    .timeline-scroll { overflow-x: auto; overflow-y: hidden; position: relative; }
+    .timeline { position: relative; min-height: 120px; }
+
+    /* Time ruler */
+    .ruler { height: 24px; position: relative; border-bottom: 1px solid var(--border); }
+    .ruler-tick { position: absolute; top: 0; height: 100%; border-left: 1px solid #e0e0e0; }
+    .ruler-tick .ruler-label { position: absolute; top: 2px; left: 4px; font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
+
+    /* Word blocks */
+    .track { position: relative; height: 40px; margin: 0; }
+    .track-label { position: sticky; left: 0; z-index: 2; background: var(--card-bg); padding: 0 8px; font-size: 0.68rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; line-height: 40px; width: 60px; display: inline-block; }
+    .word-block { position: absolute; height: 28px; top: 6px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 3px; cursor: pointer; border: 1px solid; min-width: 2px; transition: opacity 0.1s; }
+    .word-block:hover { opacity: 0.8; z-index: 10; }
+    .word-block.gt { background: var(--gt-bg); color: var(--gt-color); border-color: var(--gt-border); }
+    .word-block.model { background: var(--model-bg); color: var(--model-color); border-color: var(--model-border); }
+    .word-block.active { outline: 2px solid #0969da; outline-offset: -1px; }
+    .word-block.diff-missing { background: #fdd; border-color: #e5534b; color: #9e1c23; }
+    .word-block.diff-extra { background: #fff3cd; border-color: #d4a017; color: #7a5d00; }
+    .word-block.diff-subst { background: #ffe0cc; border-color: #e87a3a; color: #8a4000; }
+
+    /* Playhead */
+    .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #e5534b; z-index: 20; pointer-events: none; }
+    .playhead::after { content: ""; position: absolute; top: 0; left: -4px; width: 10px; height: 10px; background: #e5534b; border-radius: 50%; }
+
+    /* Word tooltip */
+    .tooltip { position: fixed; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-size: 0.78rem; z-index: 100; display: none; min-width: 160px; }
+    .tooltip .row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+    .tooltip .lbl { color: var(--muted); }
+
+    /* Metrics */
+    .metrics-bar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .metric-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-width: 120px; }
+    .metric-card .label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .metric-card .value { font-size: 1.1rem; font-weight: 600; margin-top: 2px; }
+    .metric-card .value.good { color: var(--green); }
+    .metric-card .value.warn { color: var(--yellow); }
+    .metric-card .value.bad { color: var(--red); }
+
+    /* Consistency */
+    .consistency { padding: 10px 14px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 16px; }
+    .consistency.pass { background: #dcffe4; color: var(--green); }
+    .consistency.fail { background: #ffeef0; color: var(--red); }
+
+    /* Text panel */
+    .text-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; font-size: 0.85rem; line-height: 1.8; }
+    .text-panel .text-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
+    .text-panel .text-word { cursor: pointer; padding: 1px 2px; border-radius: 2px; }
+    .text-panel .text-word:hover { background: #e8f0fe; }
+    .text-panel .text-word.active { background: #d2e3fc; }
+    .text-panel .text-word.diff-missing { background: #fdd; color: #9e1c23; text-decoration: line-through; }
+    .text-panel .text-word.diff-extra { background: #fff3cd; color: #7a5d00; }
+    .text-panel .text-word.diff-subst { background: #ffe0cc; color: #8a4000; }
+
+    /* Progress */
+    .progress-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 200; }
+    .progress-overlay.hidden { display: none; }
+    .progress-box { background: var(--card-bg); border-radius: 10px; padding: 24px 32px; min-width: 300px; text-align: center; }
+    .progress-box .title { font-weight: 600; margin-bottom: 8px; }
+    .progress-box .detail { font-size: 0.85rem; color: var(--muted); }
+    .progress-bar { width: 100%; height: 6px; background: #eee; border-radius: 3px; margin-top: 12px; overflow: hidden; }
+    .progress-bar .fill { height: 100%; background: #0969da; transition: width 0.3s; border-radius: 3px; }
+
+    .empty-state { text-align: center; padding: 40px 24px; color: var(--muted); font-size: 0.9rem; }
+
+    /* Waveform */
+    .track-waveform { position: relative; height: 60px; border-bottom: 1px solid var(--border); }
+    .track-waveform canvas { position: absolute; top: 0; left: 60px; height: 60px; }
+    .track-waveform .track-label { position: sticky; left: 0; z-index: 2; background: var(--card-bg); padding: 0 8px; font-size: 0.68rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; line-height: 60px; width: 60px; display: inline-block; }
+
+    .zoom-controls { display: flex; gap: 4px; margin-left: auto; }
+    .zoom-controls .btn { padding: 2px 10px; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Whisper Benchmark</h1>
+    <span class="status" id="header-status">No model loaded</span>
+    <div class="actions">
+      <button class="btn" id="btn-load-model" onclick="loadModel()">Load Model</button>
+      <button class="btn primary" id="btn-run-all" onclick="runAll()" disabled>Run All Clips</button>
+      <button class="btn" id="btn-reset" style="display:none;color:var(--red);border-color:var(--red);" onclick="resetResults()">Reset Results</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="upload-area" id="upload-area">
+      <input type="file" id="file-input" accept="audio/*,video/*">
+      <label for="file-input">Choose a file</label> or drag & drop any audio/video file
+      <div class="upload-form" id="upload-form" style="display:none;">
+        <span id="upload-filename" style="font-size:0.8rem;color:var(--muted);"></span>
+        <input type="text" id="upload-name" placeholder="Test case name">
+        <select id="upload-lang">
+          <option value="en">English</option><option value="es">Spanish</option><option value="pt">Portuguese</option>
+          <option value="fr">French</option><option value="de">German</option><option value="ja">Japanese</option>
+          <option value="zh">Chinese</option><option value="ar">Arabic</option><option value="ko">Korean</option>
+          <option value="ru">Russian</option><option value="it">Italian</option><option value="nl">Dutch</option>
+          <option value="pl">Polish</option><option value="sk">Slovak</option><option value="he">Hebrew</option>
+        </select>
+        <button class="btn primary" id="btn-upload" onclick="uploadTestCase()">Add Test Case</button>
+      </div>
+    </div>
+
+    <div class="clip-tabs" id="clip-tabs"></div>
+    <div class="metrics-bar" id="metrics-bar"></div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:0.8rem;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="normalize-wer" checked onchange="toggleNormalize(this.checked)">
+        Normalize WER (lowercase, no punctuation)
+      </label>
+    </div>
+    <div id="consistency-box"></div>
+
+    <!-- Audio player -->
+    <div class="player" id="player" style="display:none;">
+      <button class="play-btn" id="play-btn" onclick="togglePlay()">&#9654;</button>
+      <span class="time" id="time-display">0:00.00 / 0:00.00</span>
+      <button class="speed-btn active" onclick="setSpeed(1, this)">1x</button>
+      <button class="speed-btn" onclick="setSpeed(0.75, this)">0.75x</button>
+      <button class="speed-btn" onclick="setSpeed(0.5, this)">0.5x</button>
+      <button class="speed-btn" onclick="setSpeed(0.25, this)">0.25x</button>
+      <div class="zoom-controls">
+        <button class="btn" onclick="zoomIn()">Zoom +</button>
+        <button class="btn" onclick="zoomOut()">Zoom -</button>
+        <button class="btn" onclick="zoomFit()">Fit</button>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline-container" id="timeline-container" style="display:none;">
+      <div class="timeline-header">
+        <div class="legend">
+          <div class="legend-item"><div class="legend-swatch" style="background:var(--gt-bg);border:1px solid var(--gt-border);"></div>Ground Truth</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:var(--model-bg);border:1px solid var(--model-border);"></div>Model</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#fdd;border:1px solid #e5534b;"></div>Missing</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#fff3cd;border:1px solid #d4a017;"></div>Extra</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#ffe0cc;border:1px solid #e87a3a;"></div>Substitution</div>
+        </div>
+      </div>
+      <div class="timeline-scroll" id="timeline-scroll">
+        <div class="timeline" id="timeline">
+          <div class="ruler" id="ruler"></div>
+          <div class="track-waveform" id="track-waveform"><span class="track-label">Audio</span><canvas id="waveform-canvas"></canvas></div>
+          <div class="track" id="track-gt"></div>
+          <div class="track" id="track-model"></div>
+          <div class="playhead" id="playhead" style="left:-10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Text with clickable words -->
+    <div id="text-panels"></div>
+
+    <!-- Run single button -->
+    <div id="run-single-box" style="margin-bottom:16px;"></div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <div class="progress-overlay hidden" id="progress">
+    <div class="progress-box">
+      <div class="title" id="progress-title">Processing...</div>
+      <div class="detail" id="progress-detail"></div>
+      <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { pipeline, env } from "/dist/transformers.js";
+    env.backends.onnx.wasm.wasmPaths = "/wasm/";
+
+    // ── State ──
+    const state = {
+      clips: [],
+      groundTruth: {},
+      modelResults: {},
+      activeClip: null,
+      transcriber: null,
+      modelLoaded: false,
+      pendingFile: null,
+      audio: null,
+      playing: false,
+      pixelsPerSecond: 80,
+      animFrame: null,
+      waveformData: null, // Float32Array of peak values for rendering
+      normalizeWER: true, // strip punctuation + lowercase for WER
+    };
+    window._state = state;
+
+    // ── Session storage ──
+    const STORAGE_KEY = "whisper-benchmark-results";
+
+    function saveResults() {
+      try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state.modelResults)); } catch {}
+      updateResetButton();
+    }
+
+    function loadResults() {
+      try {
+        const raw = sessionStorage.getItem(STORAGE_KEY);
+        if (raw) state.modelResults = JSON.parse(raw);
+      } catch {}
+      updateResetButton();
+    }
+
+    function updateResetButton() {
+      const btn = document.getElementById("btn-reset");
+      btn.style.display = Object.keys(state.modelResults).length > 0 ? "inline-block" : "none";
+    }
+
+    window.resetResults = function () {
+      state.modelResults = {};
+      sessionStorage.removeItem(STORAGE_KEY);
+      updateResetButton();
+      renderTabs();
+      renderContent();
+      renderMetrics();
+    };
+
+    // ── Init ──
+    async function init() {
+      try {
+        const resp = await fetch("/api/cases");
+        if (resp.ok) {
+          const cases = await resp.json();
+          state.clips = cases.map(c => ({ name: c.name, file: c.file, lang: "en", desc: c.file }));
+        }
+      } catch { state.clips = []; }
+
+      for (const clip of state.clips) {
+        try {
+          const resp = await fetch(`/ground-truth/${clip.name}.json`);
+          if (resp.ok) {
+            const gt = await resp.json();
+            state.groundTruth[clip.name] = gt;
+            if (gt.language_code) clip.lang = gt.language_code;
+          }
+        } catch {}
+      }
+
+      loadResults();
+      setupUpload();
+      renderTabs();
+      if (state.clips.length > 0) selectClip(state.clips[0].name);
+      renderMetrics();
+    }
+
+    // ── Upload ──
+    function setupUpload() {
+      const area = document.getElementById("upload-area");
+      const fileInput = document.getElementById("file-input");
+      area.addEventListener("dragover", e => { e.preventDefault(); area.classList.add("dragover"); });
+      area.addEventListener("dragleave", () => area.classList.remove("dragover"));
+      area.addEventListener("drop", e => { e.preventDefault(); area.classList.remove("dragover"); if (e.dataTransfer.files.length) setPendingFile(e.dataTransfer.files[0]); });
+      fileInput.addEventListener("change", () => { if (fileInput.files.length) setPendingFile(fileInput.files[0]); });
+    }
+
+    function setPendingFile(file) {
+      state.pendingFile = file;
+      document.getElementById("upload-form").style.display = "flex";
+      document.getElementById("upload-filename").textContent = file.name;
+      document.getElementById("upload-name").value = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
+    }
+
+    window.uploadTestCase = async function () {
+      if (!state.pendingFile) return;
+      const name = document.getElementById("upload-name").value.trim();
+      const lang = document.getElementById("upload-lang").value;
+      if (!name) { alert("Enter a name."); return; }
+      const btn = document.getElementById("btn-upload");
+      btn.disabled = true; btn.textContent = "Uploading...";
+      showProgress("Adding test case", "Converting & transcribing...");
+      try {
+        const fd = new FormData();
+        fd.append("file", state.pendingFile);
+        fd.append("name", name);
+        fd.append("lang", lang);
+        const resp = await fetch("/api/add-test-case", { method: "POST", body: fd });
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error);
+        state.pendingFile = null;
+        document.getElementById("upload-form").style.display = "none";
+        document.getElementById("file-input").value = "";
+        await init();
+        selectClip(name);
+      } catch (e) { alert("Failed: " + e.message); }
+      btn.disabled = false; btn.textContent = "Add Test Case";
+      hideProgress();
+    };
+
+    // ── Model ──
+    window.loadModel = async function () {
+      const btn = document.getElementById("btn-load-model");
+      btn.disabled = true; btn.textContent = "Loading...";
+      setHeaderStatus("Loading model...");
+      showProgress("Loading Whisper model", "Downloading & compiling...");
+      try {
+        state.transcriber = await pipeline("automatic-speech-recognition", "onnx-community/whisper-large-v3-turbo_timestamped", {
+          dtype: { encoder_model: "fp16", decoder_model_merged: "q4" }, device: "webgpu",
+        });
+        state.modelLoaded = true;
+        btn.textContent = "Model Loaded";
+        document.getElementById("btn-run-all").disabled = false;
+        setHeaderStatus("Model ready");
+      } catch (e) { btn.textContent = "Load Failed"; btn.disabled = false; setHeaderStatus("Failed: " + e.message); }
+      hideProgress();
+    };
+
+    // ── Audio ──
+    class AudioProcessor {
+      constructor() { this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); }
+      async processUrl(url) {
+        const buf = await (await fetch(url)).arrayBuffer();
+        const ab = await this.ctx.decodeAudioData(buf);
+        if (ab.numberOfChannels === 2) {
+          const S = Math.sqrt(2), L = ab.getChannelData(0), R = ab.getChannelData(1), o = new Float32Array(L.length);
+          for (let i = 0; i < L.length; i++) o[i] = Math.max(-1, Math.min(S * (L[i] + R[i]) / 2, 1));
+          return o;
+        }
+        return ab.getChannelData(0);
+      }
+    }
+
+    async function transcribeClip(clip) {
+      const proc = new AudioProcessor();
+      const audio = await proc.processUrl(`/fixtures/${clip.file}`);
+      const wr = await state.transcriber(audio, { language: clip.lang, return_timestamps: "word", chunk_length_s: 30, stride_length_s: 5 });
+      const sr = await state.transcriber(audio, { language: clip.lang, return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 });
+      return {
+        word: { text: wr.text, chunks: (wr.chunks || []).map(c => ({ text: c.text, start: c.timestamp?.[0] ?? null, end: c.timestamp?.[1] ?? null })) },
+        sentence: { text: sr.text, chunks: (sr.chunks || []).map(c => ({ text: c.text, start: c.timestamp?.[0] ?? null, end: c.timestamp?.[1] ?? null })) },
+      };
+    }
+
+    window.runAll = async function () {
+      if (!state.modelLoaded) return;
+      document.getElementById("btn-run-all").disabled = true;
+      for (let i = 0; i < state.clips.length; i++) {
+        const clip = state.clips[i];
+        showProgress(`Transcribing ${clip.name}`, `${i + 1}/${state.clips.length}`);
+        setProgressFill((i / state.clips.length) * 100);
+        try { state.modelResults[clip.name] = await transcribeClip(clip); } catch (e) { state.modelResults[clip.name] = { error: e.message }; }
+        saveResults();
+        renderTabs();
+        if (state.activeClip === clip.name) renderContent();
+      }
+      hideProgress();
+      document.getElementById("btn-run-all").disabled = false;
+      renderMetrics();
+    };
+
+    window.runSingle = async function (name) {
+      if (!state.modelLoaded) return;
+      const clip = state.clips.find(c => c.name === name);
+      if (!clip) return;
+      showProgress(`Transcribing ${clip.name}`, clip.desc);
+      try { state.modelResults[clip.name] = await transcribeClip(clip); } catch (e) { state.modelResults[clip.name] = { error: e.message }; }
+      saveResults();
+      hideProgress();
+      renderTabs();
+      renderContent();
+      renderMetrics();
+    };
+
+    // ── Playback ──
+    function loadAudio(clipName) {
+      const clip = state.clips.find(c => c.name === clipName);
+      if (!clip) return;
+      if (state.audio) { state.audio.pause(); cancelAnimationFrame(state.animFrame); }
+      const audio = new Audio();
+      audio.preload = "auto";
+      audio.src = `/fixtures/${clip.file}`;
+      state.audio = audio;
+      state.playing = false;
+      state.waveformData = null;
+      document.getElementById("play-btn").innerHTML = "&#9654;";
+      audio.addEventListener("loadedmetadata", () => { updateTimeDisplay(); renderTimeline(); });
+      audio.addEventListener("ended", () => { state.playing = false; document.getElementById("play-btn").innerHTML = "&#9654;"; });
+      audio.load();
+      document.getElementById("player").style.display = "flex";
+
+      // Decode audio for waveform display
+      fetch(`/fixtures/${clip.file}`)
+        .then(r => r.arrayBuffer())
+        .then(buf => {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          return ctx.decodeAudioData(buf);
+        })
+        .then(audioBuf => {
+          const raw = audioBuf.getChannelData(0);
+          // Downsample to ~200 samples per second for waveform peaks
+          const samplesPerPeak = Math.floor(audioBuf.sampleRate / 200);
+          const peaks = [];
+          for (let i = 0; i < raw.length; i += samplesPerPeak) {
+            let max = 0;
+            const end = Math.min(i + samplesPerPeak, raw.length);
+            for (let j = i; j < end; j++) {
+              const v = Math.abs(raw[j]);
+              if (v > max) max = v;
+            }
+            peaks.push(max);
+          }
+          state.waveformData = { peaks, sampleRate: 200, duration: audioBuf.duration };
+          renderWaveform();
+        })
+        .catch(e => console.warn("Waveform decode failed:", e));
+    }
+
+    window.togglePlay = function () {
+      if (!state.audio) return;
+      if (state.playing) {
+        state.audio.pause();
+        state.playing = false;
+        document.getElementById("play-btn").innerHTML = "&#9654;";
+        cancelAnimationFrame(state.animFrame);
+      } else {
+        state.audio.play();
+        state.playing = true;
+        document.getElementById("play-btn").innerHTML = "&#9646;&#9646;";
+        tickPlayhead();
+      }
+    };
+
+    window.setSpeed = function (rate, btn) {
+      if (state.audio) state.audio.playbackRate = rate;
+      document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    };
+
+    function tickPlayhead() {
+      if (!state.playing) return;
+      updatePlayhead();
+      updateTimeDisplay();
+      highlightActiveWords();
+      state.animFrame = requestAnimationFrame(tickPlayhead);
+    }
+
+    function updatePlayhead() {
+      const ph = document.getElementById("playhead");
+      if (!state.audio) return;
+      const t = state.audio.currentTime;
+      const left = 60 + t * state.pixelsPerSecond;
+      ph.style.left = left + "px";
+      // Auto-scroll
+      const scroll = document.getElementById("timeline-scroll");
+      const visible = scroll.clientWidth;
+      if (left > scroll.scrollLeft + visible - 100) scroll.scrollLeft = left - 200;
+    }
+
+    function updateTimeDisplay() {
+      if (!state.audio) return;
+      const cur = state.audio.currentTime;
+      const dur = state.audio.duration || 0;
+      document.getElementById("time-display").textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+    }
+
+    function fmtTime(s) {
+      const m = Math.floor(s / 60);
+      const sec = (s % 60).toFixed(2).padStart(5, "0");
+      return `${m}:${sec}`;
+    }
+
+    function highlightActiveWords() {
+      if (!state.audio) return;
+      const t = state.audio.currentTime;
+      document.querySelectorAll(".word-block").forEach(el => {
+        const s = parseFloat(el.dataset.start);
+        const e = parseFloat(el.dataset.end);
+        el.classList.toggle("active", t >= s && t <= e);
+      });
+      document.querySelectorAll(".text-word").forEach(el => {
+        const s = parseFloat(el.dataset.start);
+        const e = parseFloat(el.dataset.end);
+        el.classList.toggle("active", t >= s && t <= e);
+      });
+    }
+
+    // ── Zoom ──
+    window.zoomIn = () => { state.pixelsPerSecond = Math.min(400, state.pixelsPerSecond * 1.5); renderTimeline(); };
+    window.zoomOut = () => { state.pixelsPerSecond = Math.max(10, state.pixelsPerSecond / 1.5); renderTimeline(); };
+    window.zoomFit = () => {
+      const dur = state.audio?.duration || getDuration();
+      if (dur > 0) {
+        const w = document.getElementById("timeline-scroll").clientWidth - 80;
+        state.pixelsPerSecond = Math.max(10, w / dur);
+      }
+      renderTimeline();
+    };
+
+    function getDuration() {
+      const clip = state.activeClip;
+      let maxEnd = 0;
+      const gt = state.groundTruth[clip];
+      if (gt?.words) for (const w of gt.words) if (w.end > maxEnd) maxEnd = w.end;
+      const mr = state.modelResults[clip];
+      if (mr?.word?.chunks) for (const w of mr.word.chunks) if (w.end > maxEnd) maxEnd = w.end;
+      return maxEnd + 1;
+    }
+
+    // ── Timeline click to seek ──
+    function setupTimelineClick() {
+      document.getElementById("timeline").addEventListener("click", (e) => {
+        if (!state.audio) return;
+        if (e.target.closest(".word-block")) return;
+        const timeline = document.getElementById("timeline");
+        const rect = timeline.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const t = Math.max(0, (x - 60) / state.pixelsPerSecond);
+        seekTo(t);
+      });
+    }
+
+    // ── Rendering ──
+    function renderTabs() {
+      document.getElementById("clip-tabs").innerHTML = state.clips.map(clip => {
+        const active = state.activeClip === clip.name ? " active" : "";
+        const badges = [];
+        if (state.groundTruth[clip.name]) badges.push('<span class="badge done">GT</span>');
+        if (state.modelResults[clip.name]) badges.push('<span class="badge done">M</span>');
+        return `<div class="clip-tab${active}" onclick="selectClip('${clip.name}')">${clip.name}${badges.join("")}</div>`;
+      }).join("");
+    }
+
+    window.selectClip = function (name) {
+      state.activeClip = name;
+      renderTabs();
+      loadAudio(name);
+      renderContent();
+      renderMetrics();
+    };
+
+    function renderContent() {
+      const clip = state.activeClip;
+      const gt = state.groundTruth[clip];
+      const mr = state.modelResults[clip];
+
+      // Run single button
+      const rsb = document.getElementById("run-single-box");
+      rsb.innerHTML = state.modelLoaded
+        ? `<button class="btn" onclick="runSingle('${clip}')">${mr ? "Re-run" : "Run"} Whisper on this clip</button>`
+        : "";
+
+      // Consistency / Error
+      const cb = document.getElementById("consistency-box");
+      if (mr?.error) {
+        cb.innerHTML = `<div class="consistency fail">Transcription error: ${esc(mr.error)}</div>`;
+      } else if (mr && !mr.error) {
+        const match = mr.word.text.trim() === mr.sentence.text.trim();
+        cb.innerHTML = `<div class="consistency ${match ? "pass" : "fail"}">Word/Sentence text consistency: ${match ? "PASS" : "FAIL"}</div>`;
+      } else { cb.innerHTML = ""; }
+
+      // Compute diff maps if both GT and model are available
+      const clipLang = gt?.language_code || state.clips.find(c => c.name === clip)?.lang;
+      const diff = (gt?.words && mr?.word?.chunks) ? computeDiffMaps(gt.words, mr.word.chunks, clipLang) : null;
+      state._diff = diff;
+
+      renderTimeline(diff);
+      renderTextPanels(diff);
+    }
+
+    function renderTimeline(diff) {
+      diff = diff || state._diff;
+      const clip = state.activeClip;
+      const gt = state.groundTruth[clip];
+      const mr = state.modelResults[clip];
+
+      if (!gt && !mr) {
+        document.getElementById("timeline-container").style.display = "none";
+        return;
+      }
+
+      document.getElementById("timeline-container").style.display = "block";
+      const duration = state.audio?.duration || getDuration();
+      const pps = state.pixelsPerSecond;
+      const totalWidth = 60 + duration * pps + 40; // 60px label offset, 40px padding
+
+      const timeline = document.getElementById("timeline");
+      timeline.style.width = totalWidth + "px";
+
+      // Ruler
+      const ruler = document.getElementById("ruler");
+      ruler.innerHTML = "";
+      ruler.style.width = totalWidth + "px";
+      const step = pps > 100 ? 1 : pps > 40 ? 2 : pps > 20 ? 5 : 10;
+      for (let t = 0; t <= duration; t += step) {
+        const x = 60 + t * pps;
+        const tick = document.createElement("div");
+        tick.className = "ruler-tick";
+        tick.style.left = x + "px";
+        tick.innerHTML = `<span class="ruler-label">${fmtTime(t)}</span>`;
+        ruler.appendChild(tick);
+      }
+
+      // GT track
+      const gtTrack = document.getElementById("track-gt");
+      gtTrack.innerHTML = '<span class="track-label">GT</span>';
+      if (gt?.words) {
+        for (let i = 0; i < gt.words.length; i++) {
+          const w = gt.words[i];
+          if (w.start == null || w.end == null) continue;
+          const left = 60 + w.start * pps;
+          const width = Math.max(2, (w.end - w.start) * pps);
+          const el = document.createElement("div");
+          const diffStatus = diff?.gtDiff?.get(i);
+          el.className = "word-block gt" + (diffStatus && diffStatus !== "matched" ? ` diff-${diffStatus}` : "");
+          el.style.left = left + "px";
+          el.style.width = width + "px";
+          el.textContent = w.text;
+          el.dataset.start = w.start;
+          el.dataset.end = w.end;
+          el.dataset.side = "gt";
+          el.dataset.idx = i;
+          el.addEventListener("click", (e) => { e.stopPropagation(); seekTo(w.start); });
+          el.addEventListener("mouseenter", showTooltip);
+          el.addEventListener("mouseleave", hideTooltip);
+          gtTrack.appendChild(el);
+        }
+      }
+
+      // Model track
+      const modelTrack = document.getElementById("track-model");
+      modelTrack.innerHTML = '<span class="track-label">Model</span>';
+      if (mr?.word?.chunks) {
+        for (let i = 0; i < mr.word.chunks.length; i++) {
+          const w = mr.word.chunks[i];
+          if (w.start == null || w.end == null) continue;
+          const left = 60 + w.start * pps;
+          const width = Math.max(2, (w.end - w.start) * pps);
+          const el = document.createElement("div");
+          const diffStatus = diff?.modelDiff?.get(i);
+          el.className = "word-block model" + (diffStatus && diffStatus !== "matched" ? ` diff-${diffStatus}` : "");
+          el.style.left = left + "px";
+          el.style.width = width + "px";
+          el.textContent = w.text;
+          el.dataset.start = w.start;
+          el.dataset.end = w.end;
+          el.dataset.side = "model";
+          el.dataset.idx = i;
+          el.addEventListener("click", (e) => { e.stopPropagation(); seekTo(w.start); });
+          el.addEventListener("mouseenter", showTooltip);
+          el.addEventListener("mouseleave", hideTooltip);
+          modelTrack.appendChild(el);
+        }
+      }
+
+      // Waveform + Playhead
+      renderWaveform();
+      updatePlayhead();
+    }
+
+    function renderWaveform() {
+      const canvas = document.getElementById("waveform-canvas");
+      const wd = state.waveformData;
+      if (!canvas || !wd) return;
+
+      const pps = state.pixelsPerSecond;
+      const totalWidth = Math.ceil(wd.duration * pps);
+      const height = 60;
+      const dpr = window.devicePixelRatio || 1;
+
+      canvas.width = totalWidth * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = totalWidth + "px";
+      canvas.style.height = height + "px";
+
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, totalWidth, height);
+
+      const mid = height / 2;
+      ctx.fillStyle = "#a0c4e8";
+      ctx.strokeStyle = "#5a9fd4";
+      ctx.lineWidth = 0.5;
+
+      // Each peak is 1/200th of a second
+      const peaksPerPixel = wd.sampleRate / pps;
+
+      for (let px = 0; px < totalWidth; px++) {
+        const peakIdx = Math.floor(px * peaksPerPixel);
+        const peakEnd = Math.min(Math.ceil((px + 1) * peaksPerPixel), wd.peaks.length);
+        let max = 0;
+        for (let i = peakIdx; i < peakEnd; i++) {
+          if (wd.peaks[i] > max) max = wd.peaks[i];
+        }
+        const h = max * mid * 0.9;
+        ctx.fillRect(px, mid - h, 1, h * 2);
+      }
+    }
+
+    function renderTextPanels(diff) {
+      diff = diff || state._diff;
+      const clip = state.activeClip;
+      const gt = state.groundTruth[clip];
+      const mr = state.modelResults[clip];
+      const el = document.getElementById("text-panels");
+      let html = "";
+
+      if (gt?.words) {
+        html += '<div class="text-panel"><div class="text-label">Ground Truth</div><div>';
+        for (let i = 0; i < gt.words.length; i++) {
+          const w = gt.words[i];
+          const ds = diff?.gtDiff?.get(i);
+          const cls = ds && ds !== "matched" ? ` diff-${ds}` : "";
+          html += `<span class="text-word${cls}" data-start="${w.start}" data-end="${w.end}" onclick="seekTo(${w.start})">${esc(w.text)}</span> `;
+        }
+        html += '</div></div>';
+      }
+
+      if (mr?.word?.chunks) {
+        html += '<div class="text-panel"><div class="text-label">Model (words)</div><div>';
+        for (let i = 0; i < mr.word.chunks.length; i++) {
+          const w = mr.word.chunks[i];
+          const ds = diff?.modelDiff?.get(i);
+          const cls = ds && ds !== "matched" ? ` diff-${ds}` : "";
+          html += `<span class="text-word${cls}" data-start="${w.start}" data-end="${w.end}" onclick="seekTo(${w.start})">${esc(w.text)}</span> `;
+        }
+        html += '</div></div>';
+      }
+
+      if (mr?.sentence?.chunks) {
+        html += '<div class="text-panel"><div class="text-label">Model (sentences)</div><div>';
+        for (const c of mr.sentence.chunks) {
+          const ts = c.start != null ? `[${c.start.toFixed(1)}s-${(c.end ?? 0).toFixed(1)}s]` : "";
+          html += `<span style="color:var(--muted);font-size:0.72rem;">${ts}</span> ${esc(c.text)} `;
+        }
+        html += '</div></div>';
+      }
+
+      el.innerHTML = html;
+    }
+
+    function seekTo(t) {
+      if (!state.audio) return;
+      const audio = state.audio;
+      if (audio.readyState >= 1) {
+        audio.currentTime = t;
+        updatePlayhead();
+        updateTimeDisplay();
+        highlightActiveWords();
+      } else {
+        audio.addEventListener("loadedmetadata", () => {
+          audio.currentTime = t;
+          updatePlayhead();
+          updateTimeDisplay();
+          highlightActiveWords();
+        }, { once: true });
+      }
+    }
+    window.seekTo = seekTo;
+
+    // ── Tooltip ──
+    function showTooltip(e) {
+      const el = e.currentTarget;
+      const side = el.dataset.side;
+      const idx = parseInt(el.dataset.idx);
+      const src = side === "gt" ? state.groundTruth[state.activeClip]?.words : state.modelResults[state.activeClip]?.word?.chunks;
+      if (!src?.[idx]) return;
+      const w = src[idx];
+      const tip = document.getElementById("tooltip");
+      tip.innerHTML = `
+        <div class="row"><span class="lbl">Word</span><strong>${esc(w.text)}</strong></div>
+        <div class="row"><span class="lbl">Start</span>${w.start?.toFixed(3)}s</div>
+        <div class="row"><span class="lbl">End</span>${w.end?.toFixed(3)}s</div>
+        <div class="row"><span class="lbl">Duration</span>${(w.end - w.start).toFixed(3)}s</div>
+        <div class="row"><span class="lbl">Source</span>${side === "gt" ? "Ground Truth" : "Model"}</div>
+      `;
+      const rect = el.getBoundingClientRect();
+      tip.style.left = Math.min(rect.left, window.innerWidth - 200) + "px";
+      tip.style.top = (rect.bottom + 6) + "px";
+      tip.style.display = "block";
+    }
+
+    function hideTooltip() { document.getElementById("tooltip").style.display = "none"; }
+
+    // ── Metrics ──
+    window.toggleNormalize = function (on) {
+      state.normalizeWER = on;
+      renderMetrics();
+    };
+
+    // Equivalent spellings per language. Each array is a group — all entries
+    // are treated as the same word. First entry is the canonical form.
+    // Add new groups as needed.
+    const EQUIV = {
+      en: [
+        ["10", "ten"],
+        ["ok", "okay"],
+        ["gonna", "going to"],
+        ["wanna", "want to"],
+      ],
+      pl: [
+        ["ok", "okej"],
+        ["youtube", "youtubie", "youtuba", "yt"],
+      ],
+      sk: [],
+      he: [],
+    };
+
+    // Build lookup: normalized word → canonical form, per language
+    const _equivCache = {};
+    function getEquivMap(lang) {
+      if (_equivCache[lang]) return _equivCache[lang];
+      const map = new Map();
+      const groups = [...(EQUIV[lang] || []), ...(EQUIV._global || [])];
+      for (const group of groups) {
+        const canonical = group[0].toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+        for (const variant of group) {
+          map.set(variant.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""), canonical);
+        }
+      }
+      _equivCache[lang] = map;
+      return map;
+    }
+
+    function normalizeWord(s, lang) {
+      const base = s.trim().toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+      if (!lang) return base;
+      const map = getEquivMap(lang);
+      return map.get(base) || base;
+    }
+
+    function computeMetrics(clipName) {
+      const gt = state.groundTruth[clipName];
+      const mr = state.modelResults[clipName];
+      if (!gt || !mr || mr.error) return null;
+
+      const lang = gt.language_code || state.clips.find(c => c.name === clipName)?.lang;
+      const norm = state.normalizeWER
+        ? (w) => normalizeWord(w.text, lang)
+        : (w) => w.text.trim().toLowerCase();
+
+      const gtW = gt.words.map(norm).filter(w => w.length > 0);
+      const mW = mr.word.chunks.map(norm).filter(w => w.length > 0);
+      const wer = computeWER(gtW, mW);
+
+      const aligned = alignWords(gt.words, mr.word.chunks, lang);
+      const tsErrors = [];
+      for (const a of aligned) {
+        if (a.gt && a.model) {
+          if (a.gt.start != null && a.model.start != null) tsErrors.push(Math.abs(a.gt.start - a.model.start));
+          if (a.gt.end != null && a.model.end != null) tsErrors.push(Math.abs(a.gt.end - a.model.end));
+        }
+      }
+
+      let monotonicity = 0;
+      const chunks = mr.word.chunks;
+      for (let i = 1; i < chunks.length; i++) {
+        if (chunks[i].start != null && chunks[i - 1].end != null && chunks[i].start < chunks[i - 1].end - 0.01) monotonicity++;
+      }
+
+      const mae = tsErrors.length > 0 ? tsErrors.reduce((a, b) => a + b, 0) / tsErrors.length : null;
+      const textMatch = mr.word.text.trim() === mr.sentence.text.trim();
+      return { wer, mae, monotonicity, textMatch };
+    }
+
+    function computeWER(ref, hyp) {
+      const n = ref.length, m = hyp.length;
+      const d = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+      for (let i = 0; i <= n; i++) d[i][0] = i;
+      for (let j = 0; j <= m; j++) d[0][j] = j;
+      for (let i = 1; i <= n; i++)
+        for (let j = 1; j <= m; j++) {
+          const cost = ref[i - 1] === hyp[j - 1] ? 0 : 1;
+          d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+        }
+      return n > 0 ? d[n][m] / n : 0;
+    }
+
+    function alignWords(gtWords, modelWords, lang) {
+      const result = [];
+      let mi = 0;
+      for (const gw of gtWords) {
+        const gn = normalizeWord(gw.text, lang);
+        let found = false;
+        for (let look = mi; look < Math.min(mi + 5, modelWords.length); look++) {
+          if (normalizeWord(modelWords[look].text, lang) === gn) {
+            for (let s = mi; s < look; s++) result.push({ gt: null, model: modelWords[s] });
+            result.push({ gt: gw, model: modelWords[look] });
+            mi = look + 1; found = true; break;
+          }
+        }
+        if (!found) result.push({ gt: gw, model: null });
+      }
+      for (; mi < modelWords.length; mi++) result.push({ gt: null, model: modelWords[mi] });
+      return result;
+    }
+
+    // Build per-index diff status maps from alignment
+    // Returns { gtDiff: Map<index, status>, modelDiff: Map<index, status> }
+    function computeDiffMaps(gtWords, modelWords, lang) {
+      const aligned = alignWords(gtWords, modelWords, lang);
+      const gtDiff = new Map();   // gt word index → "matched" | "missing" | "subst"
+      const modelDiff = new Map(); // model word index → "matched" | "extra" | "subst"
+
+      for (const a of aligned) {
+        if (a.gt && a.model) {
+          const gn = normalizeWord(a.gt.text, lang);
+          const mn = normalizeWord(a.model.text, lang);
+          const gi = gtWords.indexOf(a.gt);
+          const mi = modelWords.indexOf(a.model);
+          if (gn === mn) {
+            gtDiff.set(gi, "matched");
+            modelDiff.set(mi, "matched");
+          } else {
+            gtDiff.set(gi, "subst");
+            modelDiff.set(mi, "subst");
+          }
+        } else if (a.gt && !a.model) {
+          gtDiff.set(gtWords.indexOf(a.gt), "missing");
+        } else if (!a.gt && a.model) {
+          modelDiff.set(modelWords.indexOf(a.model), "extra");
+        }
+      }
+      return { gtDiff, modelDiff };
+    }
+
+    function renderMetrics() {
+      const bar = document.getElementById("metrics-bar");
+      const clip = state.activeClip;
+      const m = computeMetrics(clip);
+      if (!m) { bar.innerHTML = ""; return; }
+
+      const werPct = (m.wer * 100).toFixed(1);
+      const werCls = m.wer < 0.05 ? "good" : m.wer < 0.15 ? "warn" : "bad";
+      const maeStr = m.mae != null ? m.mae.toFixed(3) + "s" : "N/A";
+      const maeCls = m.mae != null ? (m.mae < 0.3 ? "good" : m.mae < 0.8 ? "warn" : "bad") : "";
+
+      bar.innerHTML = `
+        <div class="metric-card"><div class="label">WER</div><div class="value ${werCls}">${werPct}%</div></div>
+        <div class="metric-card"><div class="label">Timestamp MAE</div><div class="value ${maeCls}">${maeStr}</div></div>
+        <div class="metric-card"><div class="label">Monotonicity</div><div class="value ${m.monotonicity === 0 ? "good" : "bad"}">${m.monotonicity}</div></div>
+        <div class="metric-card"><div class="label">W/S match</div><div class="value ${m.textMatch ? "good" : "bad"}">${m.textMatch ? "Yes" : "No"}</div></div>
+      `;
+    }
+
+    // ── Helpers ──
+    function setHeaderStatus(msg) { document.getElementById("header-status").textContent = msg; }
+    function showProgress(t, d) { document.getElementById("progress-title").textContent = t; document.getElementById("progress-detail").textContent = d || ""; document.getElementById("progress-fill").style.width = "0%"; document.getElementById("progress").classList.remove("hidden"); }
+    function setProgressFill(p) { document.getElementById("progress-fill").style.width = p + "%"; }
+    function hideProgress() { document.getElementById("progress").classList.add("hidden"); }
+    function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+    // ── Programmatic API for Playwright / agents ──
+    //
+    // Globals exposed:
+    //   window.__READY__   — true when page initialized
+    //   window.__DONE__    — true when autorun finished
+    //   window.__METRICS__ — { clipName: { wer, mae, monotonicity, textMatch } }
+    //   window.__RESULTS__ — { clipName: { model: {word,sentence}, groundTruth, diff } }
+    //   window.__ERROR__   — error string if autorun failed
+    //
+    // URL params:
+    //   ?autorun=true         — load model, run all clips
+    //   ?autorun=true&clip=X  — load model, run only clip X
+    //
+    window.__READY__ = false;
+    window.__DONE__ = false;
+    window.__METRICS__ = null;
+    window.__RESULTS__ = null;
+    window.__ERROR__ = null;
+
+    function computeAllMetrics(clipNames) {
+      const results = {};
+      for (const name of clipNames) {
+        const m = computeMetrics(name);
+        if (m) results[name] = m;
+      }
+      return results;
+    }
+
+    function computeAllResults(clipNames) {
+      const out = {};
+      for (const name of clipNames) {
+        const gt = state.groundTruth[name];
+        const mr = state.modelResults[name];
+        if (!mr || mr.error) {
+          out[name] = { error: mr?.error || "not run" };
+          continue;
+        }
+        const lang = gt?.language_code || state.clips.find(c => c.name === name)?.lang;
+        const aligned = gt?.words ? alignWords(gt.words, mr.word.chunks, lang) : null;
+
+        // Build readable diff
+        const diff = aligned ? aligned.map(a => {
+          if (a.gt && a.model) {
+            const match = normalizeWord(a.gt.text, lang) === normalizeWord(a.model.text, lang);
+            return {
+              status: match ? "match" : "substitution",
+              gt: { text: a.gt.text, start: a.gt.start, end: a.gt.end },
+              model: { text: a.model.text, start: a.model.start, end: a.model.end },
+            };
+          } else if (a.gt) {
+            return { status: "missing", gt: { text: a.gt.text, start: a.gt.start, end: a.gt.end }, model: null };
+          } else {
+            return { status: "extra", gt: null, model: { text: a.model.text, start: a.model.start, end: a.model.end } };
+          }
+        }) : null;
+
+        out[name] = {
+          model: mr,
+          groundTruth: gt ? { text: gt.text, wordCount: gt.words.length } : null,
+          diff,
+        };
+      }
+      return out;
+    }
+
+    // ?autorun — load model, run clips, expose results
+    async function autorun() {
+      const params = new URLSearchParams(location.search);
+      const clipParam = params.get("clip");
+
+      try {
+        await loadModel();
+        if (!state.modelLoaded) throw new Error("Model failed to load");
+
+        if (clipParam) {
+          // Single clip mode
+          const clip = state.clips.find(c => c.name === clipParam);
+          if (!clip) throw new Error(`Clip "${clipParam}" not found. Available: ${state.clips.map(c => c.name).join(", ")}`);
+          await runSingle(clipParam);
+          const names = [clipParam];
+          window.__METRICS__ = computeAllMetrics(names);
+          window.__RESULTS__ = computeAllResults(names);
+        } else {
+          // All clips
+          await runAll();
+          const names = state.clips.map(c => c.name);
+          window.__METRICS__ = computeAllMetrics(names);
+          window.__RESULTS__ = computeAllResults(names);
+        }
+        window.__DONE__ = true;
+      } catch (e) {
+        window.__ERROR__ = e.message;
+        window.__DONE__ = true;
+      }
+    }
+
+    // ── Boot ──
+    setupTimelineClick();
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && !e.target.closest("input, select, textarea, button")) {
+        e.preventDefault();
+        togglePlay();
+      }
+    });
+    init().then(() => {
+      window.__READY__ = true;
+      if (new URLSearchParams(location.search).has("autorun")) autorun();
+    });
+  </script>
+</body>
+</html>
