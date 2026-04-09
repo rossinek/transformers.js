@@ -17,7 +17,37 @@
  * Adjust per-clip overrides in CLIP_THRESHOLDS as baselines improve.
  */
 
-import { test, expect } from "@playwright/test";
+import { test as base, expect, chromium } from "@playwright/test";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CACHE_DIR = path.join(__dirname, "..", "..", ".playwright-cache");
+
+// Use a persistent browser context so the Cache API (where transformers.js
+// stores downloaded ONNX models) survives across test runs.
+// This avoids re-downloading the ~400 MB Whisper model every time.
+const test = base.extend({
+  context: async ({}, use) => {
+    const context = await chromium.launchPersistentContext(CACHE_DIR, {
+      headless: false,
+      args: [
+        "--enable-unsafe-webgpu",
+        "--enable-features=Vulkan",
+      ],
+    });
+    await use(context);
+    await context.close();
+  },
+  page: async ({ context, baseURL }, use) => {
+    const page = context.pages()[0] || await context.newPage();
+    // Playwright normally injects baseURL via context options; for persistent
+    // contexts we handle navigation with full URLs in runBenchmark() already,
+    // but store baseURL on page for convenience.
+    page._baseURL = baseURL;
+    await use(page);
+  },
+});
 
 // Default thresholds — any clip not in CLIP_THRESHOLDS uses these
 const DEFAULT_THRESHOLDS = {
@@ -39,9 +69,10 @@ function getThresholds(clipName) {
 
 // Helper: load page, wait for autorun to finish, return { metrics, results }
 async function runBenchmark(page, clipName) {
+  const base = page._baseURL || "http://localhost:8484";
   const url = clipName
-    ? `/?autorun=true&clip=${encodeURIComponent(clipName)}`
-    : "/?autorun=true";
+    ? `${base}/?autorun=true&clip=${encodeURIComponent(clipName)}`
+    : `${base}/?autorun=true`;
 
   await page.goto(url);
   await page.waitForFunction(() => window.__READY__ === true, null, { timeout: 30_000 });

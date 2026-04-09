@@ -192,6 +192,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                             if (returnWordTimestamps) {
                                 previous_token_timestamps.push(current_token_timestamps);
                             }
+
                             const [resolved_tokens, resolved_token_timestamps] = this.findLongestCommonSequence(
                                 previous_tokens,
                                 previous_token_timestamps,
@@ -303,7 +304,33 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
             if (returnWordTimestamps) {
                 chunk.words = this.collateWordTimestamps(resolved_tokens, resolved_token_timestamps, last_language);
             }
-            chunks.push(chunk);
+
+            // At chunk boundaries the same audio can be transcribed by both
+            // the previous chunk's right stride and the current chunk's clean
+            // region. In word-timestamp mode, trim any overlapping prefix from
+            // the final leftover but keep any new tail content that starts
+            // after the previous chunk ends.
+            if (returnWordTimestamps && chunks.length > 0 && chunk.words?.length > 0) {
+                const lastChunk = chunks[chunks.length - 1];
+                if (lastChunk.words?.length > 0) {
+                    const lastWordEnd = lastChunk.words[lastChunk.words.length - 1]?.timestamp?.[1] ?? -Infinity;
+                    const firstNew = chunk.words.findIndex(
+                        (word) => (word.timestamp?.[0] ?? -Infinity) > lastWordEnd + TIMESTAMP_MERGE_TOLERANCE,
+                    );
+
+                    if (firstNew === -1) {
+                        chunk.words = [];
+                        chunk.text = '';
+                    } else if (firstNew > 0) {
+                        chunk.words = chunk.words.slice(firstNew);
+                        chunk.text = chunk.words.map((word) => word.text).join('');
+                    }
+                }
+            }
+
+            if (chunk.text) {
+                chunks.push(chunk);
+            }
         }
 
         let optional = Object.create(null);
@@ -433,15 +460,31 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                 }
             }
             const [leftStart, leftStop, rightStart, rightStop] = maxIndices;
-            const leftMid = Math.floor((leftStop + leftStart) / 2);
+            let leftMid = Math.floor((leftStop + leftStart) / 2);
             let rightMid = Math.floor((rightStop + rightStart) / 2);
 
-            // When no overlap is found and we have timestamps, skip right-side tokens
-            // that precede the left's last timestamp to avoid backwards-jumping timestamps.
-            if (use_token_timestamp_sequences && max === 0.0 && leftLength > 0) {
+            if (use_token_timestamp_sequences && leftLength > 0) {
                 const lastLeftTs = left_token_timestamp_sequence[leftLength - 1][0];
-                const idx = token_timestamp_sequences[i].findIndex((ts) => ts[0] >= lastLeftTs);
-                rightMid = idx === -1 ? rightSequence.length : idx;
+                const firstLeftTs = left_token_timestamp_sequence[0][0];
+                const lastRightTs =
+                    token_timestamp_sequences[i].length > 0
+                        ? token_timestamp_sequences[i][token_timestamp_sequences[i].length - 1][0]
+                        : Infinity;
+
+                // When the right sequence is entirely before the left sequence
+                // (reversed temporal order), the right content was already output
+                // by a previous chunk's clean region — discard it entirely.
+                if (lastRightTs < firstLeftTs - TIMESTAMP_MERGE_TOLERANCE) {
+                    leftMid = leftLength;
+                    rightMid = rightLength;
+                }
+                // When no overlap is found, skip right-side tokens that precede
+                // the left's last timestamp to avoid backwards-jumping timestamps.
+                else if (max === 0.0) {
+                    leftMid = leftLength;
+                    const idx = token_timestamp_sequences[i].findIndex((ts) => ts[0] >= lastLeftTs);
+                    rightMid = idx === -1 ? rightSequence.length : idx;
+                }
             }
 
             totalSequence.push(...leftSequence.slice(0, leftMid));

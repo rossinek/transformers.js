@@ -16305,7 +16305,25 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
       if (returnWordTimestamps) {
         chunk2.words = this.collateWordTimestamps(resolved_tokens, resolved_token_timestamps, last_language);
       }
-      chunks.push(chunk2);
+      if (returnWordTimestamps && chunks.length > 0 && chunk2.words?.length > 0) {
+        const lastChunk = chunks[chunks.length - 1];
+        if (lastChunk.words?.length > 0) {
+          const lastWordEnd = lastChunk.words[lastChunk.words.length - 1]?.timestamp?.[1] ?? -Infinity;
+          const firstNew = chunk2.words.findIndex(
+            (word) => (word.timestamp?.[0] ?? -Infinity) > lastWordEnd + TIMESTAMP_MERGE_TOLERANCE
+          );
+          if (firstNew === -1) {
+            chunk2.words = [];
+            chunk2.text = "";
+          } else if (firstNew > 0) {
+            chunk2.words = chunk2.words.slice(firstNew);
+            chunk2.text = chunk2.words.map((word) => word.text).join("");
+          }
+        }
+      }
+      if (chunk2.text) {
+        chunks.push(chunk2);
+      }
     }
     let optional = /* @__PURE__ */ Object.create(null);
     const full_text = chunks.map((chunk3) => chunk3.text).join("");
@@ -16380,12 +16398,20 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
         }
       }
       const [leftStart, leftStop, rightStart, rightStop] = maxIndices;
-      const leftMid = Math.floor((leftStop + leftStart) / 2);
+      let leftMid = Math.floor((leftStop + leftStart) / 2);
       let rightMid = Math.floor((rightStop + rightStart) / 2);
-      if (use_token_timestamp_sequences && max2 === 0 && leftLength > 0) {
+      if (use_token_timestamp_sequences && leftLength > 0) {
         const lastLeftTs = left_token_timestamp_sequence[leftLength - 1][0];
-        const idx = token_timestamp_sequences[i].findIndex((ts2) => ts2[0] >= lastLeftTs);
-        rightMid = idx === -1 ? rightSequence.length : idx;
+        const firstLeftTs = left_token_timestamp_sequence[0][0];
+        const lastRightTs = token_timestamp_sequences[i].length > 0 ? token_timestamp_sequences[i][token_timestamp_sequences[i].length - 1][0] : Infinity;
+        if (lastRightTs < firstLeftTs - TIMESTAMP_MERGE_TOLERANCE) {
+          leftMid = leftLength;
+          rightMid = rightLength;
+        } else if (max2 === 0) {
+          leftMid = leftLength;
+          const idx = token_timestamp_sequences[i].findIndex((ts2) => ts2[0] >= lastLeftTs);
+          rightMid = idx === -1 ? rightSequence.length : idx;
+        }
       }
       totalSequence.push(...leftSequence.slice(0, leftMid));
       leftSequence = rightSequence.slice(rightMid);

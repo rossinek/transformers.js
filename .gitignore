@@ -21,3 +21,7 @@ packages/*/coverage
 # Local-only Whisper benchmark data
 packages/transformers/tests/e2e/ground-truth/
 packages/transformers/tests/e2e/fixtures/*.wav
+
+# Playwright
+.playwright-cache
+test-results

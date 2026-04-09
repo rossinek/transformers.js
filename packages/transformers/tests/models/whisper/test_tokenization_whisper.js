@@ -513,6 +513,69 @@ export const TEST_CONFIG = {
 const MAX_EXECUTION_TIME = 10_000;
 export const CUSTOM_TESTS = () => {
   describe("Decode ASR", () => {
+    it("should preserve short valid overlaps without timestamps", () => {
+      const tokenizer = Object.create(WhisperTokenizer.prototype);
+
+      const [resolved_tokens, resolved_token_timestamps] = tokenizer.findLongestCommonSequence([
+        [1, 2, 3, 4, 5],
+        [4, 5, 6],
+      ]);
+
+      expect(resolved_tokens).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(resolved_token_timestamps).toEqual([]);
+    });
+
+    it("should trim overlapping leftover prefixes in word mode but keep new tail content", () => {
+      const tokenizer = Object.create(WhisperTokenizer.prototype);
+      const token_to_text = {
+        1: " overlap",
+        2: " kept",
+        3: " tail",
+      };
+
+      tokenizer._tokenizer = {
+        token_to_id() {
+          return 1000;
+        },
+      };
+      tokenizer.all_special_ids = [];
+      tokenizer.decode = (token_ids) => token_ids.map((id) => token_to_text[Number(id)] ?? "").join("");
+      tokenizer.collateWordTimestamps = (tokens, token_timestamps) =>
+        tokens.map((token, i) => ({
+          text: token_to_text[token],
+          timestamp: token_timestamps[i],
+        }));
+
+      const decoded = tokenizer._decode_asr(
+        [
+          {
+            tokens: [1001n, 1n, 2n, 1003n],
+            token_timestamps: [0, 0.5, 1.9, 2.0],
+          },
+          {
+            tokens: [2n, 3n],
+            token_timestamps: [1.95, 2.3],
+          },
+        ],
+        {
+          return_timestamps: "word",
+          time_precision: 1,
+          force_full_sequences: false,
+        },
+      );
+
+      expect(decoded).toEqual([
+        " overlap kept tail",
+        {
+          chunks: [
+            { text: " overlap", timestamp: [0.5, 1.9] },
+            { text: " kept", timestamp: [1.9, 2] },
+            { text: " tail", timestamp: [2.3, null] },
+          ],
+        },
+      ]);
+    });
+
     it(
       "should decode ASR outputs",
       async () => {
