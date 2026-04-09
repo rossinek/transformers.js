@@ -109,15 +109,22 @@ class GreedySampler extends LogitsSampler {
     /**
      * Sample the maximum probability of a given logits tensor.
      * @param {Tensor} logits
-     * @returns {Promise<[bigint, number][]>} An array with a single tuple, containing the index of the maximum value and a meaningless score (since this is a greedy search).
+     * @returns {Promise<[bigint, number][]>} An array with a single tuple, containing the index of the maximum value and its log probability.
      */
     async sample(logits) {
-        // NOTE: no need to do log_softmax here since we only take the maximum
-        const argmax = max(logits.data)[1];
+        const data = /** @type {Float32Array} */ (logits.data);
+        const [maxVal, argmax] = max(data);
 
-        // Note: score is meaningless in this context, since we are performing
-        // greedy search (p = 1 => log(p) = 0)
-        return [[BigInt(argmax), 0]];
+        // Compute log probability of the selected token via log-softmax
+        // log_softmax(x_i) = x_i - log(sum(exp(x_j)))
+        // For numerical stability, subtract max first
+        let sumExp = 0;
+        for (let i = 0; i < data.length; ++i) {
+            sumExp += Math.exp(data[i] - maxVal);
+        }
+        const logprob = maxVal - maxVal - Math.log(sumExp); // = -log(sumExp)
+
+        return [[BigInt(argmax), logprob]];
     }
 }
 

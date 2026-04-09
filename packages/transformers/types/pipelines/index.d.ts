@@ -99,7 +99,7 @@ export const SUPPORTED_TASKS: Readonly<{
     };
     'text-to-audio': {
         pipeline: typeof TextToAudioPipeline;
-        model: (typeof AutoModelForTextToSpectrogram)[];
+        model: (typeof AutoModelForTextToWaveform)[];
         default: {
             model: string;
             dtype: string;
@@ -240,7 +240,7 @@ import { AutoModel } from '../models/auto/modeling_auto.js';
 import { AutomaticSpeechRecognitionPipeline } from './automatic-speech-recognition.js';
 import { AutoModelForSpeechSeq2Seq } from '../models/auto/modeling_auto.js';
 import { TextToAudioPipeline } from './text-to-audio.js';
-import { AutoModelForTextToSpectrogram } from '../models/auto/modeling_auto.js';
+import { AutoModelForTextToWaveform } from '../models/auto/modeling_auto.js';
 import { ImageToTextPipeline } from './image-to-text.js';
 import { AutoModelForVision2Seq } from '../models/auto/modeling_auto.js';
 import { ImageClassificationPipeline } from './image-classification.js';

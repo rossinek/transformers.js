@@ -20,6 +20,7 @@ declare const AutomaticSpeechRecognitionPipeline_base: new (options: TextAudioPi
  * @property {number} [chunk_length_s] The length of audio chunks to process in seconds. Default is 0 (no chunking).
  * @property {number} [stride_length_s] The length of overlap between consecutive audio chunks in seconds. If not provided, defaults to `chunk_length_s / 6`.
  * @property {boolean} [force_full_sequences] Whether to force outputting full sequences or not. Default is `false`.
+ * @property {boolean} [hallucination_recovery] Whether to enable best-effort Whisper hallucination recovery. Default is `true`.
  * @property {string} [language] The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
  * @property {string} [task] The task to perform. Default is `null`, meaning it should be auto-detected.
  * @property {number} [num_frames] The number of frames in the input audio.
@@ -135,6 +136,67 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         text: string;
     }[]>;
     _call_whisper(audio: any, kwargs: any): Promise<any>;
+    /**
+     * Processes a single audio chunk, detecting hallucination (very low token density)
+     * and recursively splitting into smaller sub-chunks when needed.
+     * @private
+     */
+    private _processChunkWithRetry;
+    _generateChunkResult(chunk: any, generation_config: any, return_timestamps: any, timestamp_begin: any, hop_length: any, sampling_rate: any): Promise<{
+        chunks: {
+            stride: any;
+            is_last: any;
+        }[];
+        total_logprob: any;
+        text_token_count: any;
+        avg_logprob: number;
+        has_valid_timestamps: boolean;
+    }>;
+    _buildChunkResult({ chunk, data, return_timestamps, timestamp_begin, sampling_rate, timestamp_shift_s }: {
+        chunk: any;
+        data: any;
+        return_timestamps: any;
+        timestamp_begin: any;
+        sampling_rate: any;
+        timestamp_shift_s?: number;
+    }): {
+        chunks: {
+            stride: any;
+            is_last: any;
+        }[];
+        total_logprob: any;
+        text_token_count: any;
+        avg_logprob: number;
+        has_valid_timestamps: boolean;
+    };
+    _countTextTokens(tokens: any, timestamp_begin: any): any;
+    _hasValidTokenTimestamps(token_timestamps: any): boolean;
+    _shouldRetryChunk(result: any, chunk_duration_s: any, logprob_threshold: any): boolean;
+    _chooseBetterChunkResult(a: any, b: any): any;
+    _combineChunkResults(results: any): {
+        chunks: any[];
+        total_logprob: number;
+        text_token_count: number;
+        avg_logprob: number;
+        has_valid_timestamps: boolean;
+    };
+    _splitChunkWithRetry(chunk: any, fullAudio: any, generation_config: any, return_timestamps: any, timestamp_begin: any, hop_length: any, sampling_rate: any, audioOffset: any, depth: any): Promise<{
+        chunks: any[];
+        total_logprob: number;
+        text_token_count: number;
+        avg_logprob: number;
+        has_valid_timestamps: boolean;
+    }>;
+    _generatePaddedChunkResult(chunk: any, fullAudio: any, generation_config: any, return_timestamps: any, timestamp_begin: any, hop_length: any, sampling_rate: any, audioOffset: any): Promise<{
+        chunks: {
+            stride: any;
+            is_last: any;
+        }[];
+        total_logprob: any;
+        text_token_count: any;
+        avg_logprob: number;
+        has_valid_timestamps: boolean;
+    }>;
     _call_moonshine(audio: any, kwargs: any): Promise<{
         text: string;
     } | {
@@ -190,6 +252,10 @@ export type AutomaticSpeechRecognitionSpecificParams = {
      * Whether to force outputting full sequences or not. Default is `false`.
      */
     force_full_sequences?: boolean;
+    /**
+     * Whether to enable best-effort Whisper hallucination recovery. Default is `true`.
+     */
+    hallucination_recovery?: boolean;
     /**
      * The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
      */

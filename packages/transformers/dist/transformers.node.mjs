@@ -23817,11 +23817,20 @@ var GreedySampler = class extends LogitsSampler {
   /**
    * Sample the maximum probability of a given logits tensor.
    * @param {Tensor} logits
-   * @returns {Promise<[bigint, number][]>} An array with a single tuple, containing the index of the maximum value and a meaningless score (since this is a greedy search).
+   * @returns {Promise<[bigint, number][]>} An array with a single tuple, containing the index of the maximum value and its log probability.
    */
   async sample(logits) {
-    const argmax = max(logits.data)[1];
-    return [[BigInt(argmax), 0]];
+    const data = (
+      /** @type {Float32Array} */
+      logits.data
+    );
+    const [maxVal, argmax] = max(data);
+    let sumExp = 0;
+    for (let i = 0; i < data.length; ++i) {
+      sumExp += Math.exp(data[i] - maxVal);
+    }
+    const logprob = maxVal - maxVal - Math.log(sumExp);
+    return [[BigInt(argmax), logprob]];
   }
 };
 var MultinomialSampler = class extends LogitsSampler {
@@ -24848,10 +24857,8 @@ var PreTrainedModel = class extends Callable {
         sequences,
         past_key_values,
         ...attentions,
-        ...return_dict_items
-        // TODO:
-        // scores,
-        // logits,
+        ...return_dict_items,
+        scores
       };
     } else {
       for (const tensor of Object.values(outputs)) {
@@ -30163,6 +30170,13 @@ var WeSpeakerResNetModel = class extends WeSpeakerResNetPreTrainedModel {
 // src/models/whisper/generation_whisper.js
 var WhisperGenerationConfig = class extends GenerationConfig {
   /**
+   * Whether to enable best-effort hallucination recovery when Whisper produces
+   * suspiciously low-quality output. This enables temperature fallback in the
+   * seek loop and ASR pipeline chunk recovery.
+   * @type {boolean}
+   */
+  hallucination_recovery = true;
+  /**
    * Whether to return the timestamps with the text. This enables the `WhisperTimestampsLogitsProcessor`.
    * @type {boolean}
    */
@@ -30302,7 +30316,9 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     // task = null,
     ...kwargs
   }) {
+    const temperature_is_explicit = kwargs.temperature !== void 0 || generation_config?.temperature !== void 0;
     generation_config = this._prepare_generation_config(generation_config, kwargs);
+    generation_config["_temperature_is_explicit"] = temperature_is_explicit;
     const init_tokens = kwargs.decoder_input_ids ?? this._retrieve_init_tokens(generation_config);
     if (generation_config.return_timestamps) {
       logits_processor ??= new LogitsProcessorList();
@@ -30331,8 +30347,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         inputs,
         generation_config,
         logits_processor,
-        init_tokens,
-        kwargs
+        init_tokens
       });
     }
     const outputs = await super.generate({
@@ -30357,13 +30372,17 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
   /**
    * Generates with a seek loop for timestamp mode, re-encoding and generating
    * for each segment until all audio frames are consumed.
-   * This matches Python's WhisperForConditionalGeneration.generate() behavior.
+   * Includes temperature fallback to handle hallucinations, matching Python's
+   * WhisperForConditionalGeneration.generate() behavior.
    * @private
    */
-  async _generate_with_seek({ inputs, generation_config, logits_processor, init_tokens, kwargs }) {
+  async _generate_with_seek({ inputs, generation_config, logits_processor, init_tokens }) {
     const timestamp_begin = generation_config.no_timestamps_token_id + 1;
     const eos_token_id = Array.isArray(generation_config.eos_token_id) ? generation_config.eos_token_id[0] : generation_config.eos_token_id;
     const return_token_timestamps = generation_config.return_token_timestamps;
+    const hallucination_recovery = generation_config.hallucination_recovery !== false;
+    const fallback_temperatures = hallucination_recovery ? this._get_fallback_temperatures(generation_config) : null;
+    const logprob_threshold = hallucination_recovery ? generation_config.logprob_threshold ?? -1 : null;
     const input_features = inputs;
     const total_frames = input_features.dims[2];
     const input_stride = 2;
@@ -30375,87 +30394,35 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     let seek = 0;
     const allTokens = [];
     const allTokenTimestamps = [];
+    let accumulated_score = 0;
     while (seek < total_frames) {
       const seek_end = Math.min(seek + num_segment_frames, total_frames);
       const segment_input = input_features.slice(null, null, [seek, seek_end]);
-      let segment_features;
       const segment_frames = segment_input.dims[2];
-      if (segment_frames < num_segment_frames) {
-        const n_mels = input_features.dims[1];
-        const padded_data = new Float32Array(n_mels * num_segment_frames);
-        const src = (
-          /** @type {Float32Array} */
-          segment_input.data
-        );
-        for (let m = 0; m < n_mels; ++m) {
-          padded_data.set(src.subarray(m * segment_frames, (m + 1) * segment_frames), m * num_segment_frames);
-        }
-        segment_features = new Tensor2("float32", padded_data, [1, n_mels, num_segment_frames]);
-      } else {
-        segment_features = segment_input;
-      }
-      if (logits_processor) {
-        for (const proc of logits_processor) {
-          if ("begin_index" in proc) {
-            proc.begin_index = init_tokens.length;
-          }
-        }
-      }
-      const outputs = (
-        /** @type {any} */
-        await super.generate({
-          inputs: segment_features,
-          generation_config,
-          logits_processor,
-          decoder_input_ids: init_tokens,
-          ...kwargs
-        })
-      );
-      const raw_sequence = return_token_timestamps ? outputs.sequences : (
-        /** @type {Tensor} */
-        outputs
-      );
-      const generated_tokens = raw_sequence[0].tolist().map(Number).slice(init_tokens.length);
-      let seek_token_timestamps;
-      if (return_token_timestamps) {
-        outputs["token_timestamps"] = this._extract_token_timestamps(
-          outputs,
-          generation_config.alignment_heads,
-          Math.floor((seek_end - seek) / input_stride),
-          0.02,
-          init_tokens.length
-        );
-        const time_offset = seek / input_stride * 0.02;
-        seek_token_timestamps = outputs.token_timestamps[0].tolist().slice(init_tokens.length).map((t) => t + time_offset);
-      }
-      if (generated_tokens.length > 0 && generated_tokens.at(-1) === eos_token_id) {
-        generated_tokens.pop();
-      }
+      const segment_features = this._pad_segment(segment_input, segment_frames, num_segment_frames);
+      const { generated_tokens, outputs, seek_token_timestamps } = await this._generate_segment({
+        segment_features,
+        generation_config,
+        logits_processor,
+        init_tokens,
+        fallback_temperatures,
+        logprob_threshold,
+        timestamp_begin,
+        eos_token_id,
+        return_token_timestamps,
+        seek,
+        seek_end,
+        input_stride
+      });
       if (generated_tokens.length === 0) {
         break;
       }
-      const is_timestamp = generated_tokens.map((t) => t >= timestamp_begin);
-      const single_timestamp_ending = generated_tokens.length >= 2 && is_timestamp[generated_tokens.length - 1] && !is_timestamp[generated_tokens.length - 2];
-      const segment_boundary_indices = [];
-      for (let i = 0; i < generated_tokens.length - 1; ++i) {
-        if (is_timestamp[i] && is_timestamp[i + 1]) {
-          segment_boundary_indices.push(i + 1);
-        }
-      }
-      let segment_offset;
-      let tokens_to_keep = generated_tokens.length;
-      if (segment_boundary_indices.length > 0) {
-        if (single_timestamp_ending) {
-          segment_offset = seek_end - seek;
-        } else {
-          const last_boundary = segment_boundary_indices.at(-1);
-          const last_ts_pos = generated_tokens[last_boundary - 1] - timestamp_begin;
-          segment_offset = last_ts_pos * input_stride;
-          tokens_to_keep = last_boundary;
-        }
-      } else {
-        segment_offset = seek_end - seek;
-      }
+      const { segment_offset, tokens_to_keep } = this._compute_seek_advance(
+        generated_tokens,
+        timestamp_begin,
+        seek_end - seek,
+        input_stride
+      );
       const timestamp_offset = Math.floor(seek / input_stride);
       const max_timestamp_token = timestamp_begin + 1500;
       for (let i = 0; i < tokens_to_keep; ++i) {
@@ -30467,20 +30434,185 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       if (seek_token_timestamps) {
         allTokenTimestamps.push(...seek_token_timestamps.slice(0, tokens_to_keep));
       }
+      accumulated_score += outputs?.scores?.[0] ?? 0;
       seek += segment_offset;
     }
     allTokens.push(eos_token_id);
     const full_sequence = [...init_tokens, ...allTokens];
-    if (return_token_timestamps) {
-      const sequences = new Tensor2("int64", full_sequence.map(BigInt), [1, full_sequence.length]);
-      const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, 0];
-      const token_timestamps = new Tensor2("float32", new Float32Array(full_timestamps), [
-        1,
-        full_timestamps.length
-      ]);
-      return { sequences, token_timestamps };
+    const sequences = new Tensor2("int64", full_sequence.map(BigInt), [1, full_sequence.length]);
+    if (return_token_timestamps || generation_config.return_dict_in_generate) {
+      const output = { sequences };
+      if (return_token_timestamps) {
+        const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, 0];
+        output["token_timestamps"] = new Tensor2("float32", new Float32Array(full_timestamps), [
+          1,
+          full_timestamps.length
+        ]);
+      }
+      if (generation_config.return_dict_in_generate) {
+        output["scores"] = [accumulated_score];
+      }
+      return output;
     }
-    return new Tensor2("int64", full_sequence.map(BigInt), [1, full_sequence.length]);
+    return sequences;
+  }
+  /**
+   * Resolves the temperature schedule used for hallucination recovery.
+   * @private
+   */
+  _get_fallback_temperatures(generation_config) {
+    if (!generation_config._temperature_is_explicit) {
+      return [0, 0.2, 0.4, 0.6, 0.8, 1];
+    }
+    const temperatures = generation_config.temperature;
+    if (Array.isArray(temperatures) && temperatures.length > 0) {
+      return temperatures;
+    }
+    if (typeof temperatures === "number") {
+      return [temperatures];
+    }
+    return [0, 0.2, 0.4, 0.6, 0.8, 1];
+  }
+  /**
+   * Pads a mel spectrogram segment to the full segment size.
+   * @private
+   */
+  _pad_segment(segment_input, segment_frames, num_segment_frames) {
+    if (segment_frames < num_segment_frames) {
+      const n_mels = segment_input.dims[1];
+      const padded_data = new Float32Array(n_mels * num_segment_frames);
+      const src = (
+        /** @type {Float32Array} */
+        segment_input.data
+      );
+      for (let m = 0; m < n_mels; ++m) {
+        padded_data.set(src.subarray(m * segment_frames, (m + 1) * segment_frames), m * num_segment_frames);
+      }
+      return new Tensor2("float32", padded_data, [1, n_mels, num_segment_frames]);
+    }
+    return segment_input;
+  }
+  /**
+   * Generates tokens for a single segment with temperature fallback.
+   * @private
+   */
+  async _generate_segment({
+    segment_features,
+    generation_config,
+    logits_processor,
+    init_tokens,
+    fallback_temperatures,
+    logprob_threshold,
+    timestamp_begin,
+    eos_token_id,
+    return_token_timestamps,
+    seek,
+    seek_end,
+    input_stride
+  }) {
+    let generated_tokens;
+    let outputs;
+    const orig_do_sample = generation_config.do_sample;
+    const orig_temperature = generation_config.temperature;
+    const orig_top_k = generation_config.top_k;
+    const orig_return_dict = generation_config.return_dict_in_generate;
+    try {
+      const attempts = fallback_temperatures?.length ? fallback_temperatures : [null];
+      for (let t_idx = 0; t_idx < attempts.length; ++t_idx) {
+        const temperature = attempts[t_idx];
+        generation_config.do_sample = orig_do_sample;
+        generation_config.temperature = orig_temperature;
+        generation_config.top_k = orig_top_k;
+        generation_config.return_dict_in_generate = orig_return_dict || return_token_timestamps || temperature !== null;
+        if (temperature === 0) {
+          generation_config.do_sample = false;
+          generation_config.temperature = 1;
+        } else if (typeof temperature === "number") {
+          generation_config.do_sample = true;
+          generation_config.temperature = temperature;
+          generation_config.top_k = 0;
+        }
+        if (logits_processor) {
+          for (const proc of logits_processor) {
+            if ("begin_index" in proc) {
+              proc.begin_index = init_tokens.length;
+            }
+          }
+        }
+        outputs = /** @type {any} */
+        await super.generate({
+          inputs: segment_features,
+          generation_config,
+          logits_processor,
+          decoder_input_ids: init_tokens
+        });
+        const raw_sequence = generation_config.return_dict_in_generate ? outputs.sequences : outputs;
+        generated_tokens = raw_sequence[0].tolist().map(Number).slice(init_tokens.length);
+        if (t_idx === attempts.length - 1 || temperature === null) break;
+        let needs_fallback = false;
+        if (logprob_threshold !== null && outputs.scores) {
+          const total_score = outputs.scores[0] ?? 0;
+          const text_token_count = generated_tokens.filter(
+            (token) => token < timestamp_begin && token !== eos_token_id
+          ).length;
+          const avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
+          if (avg_logprob < logprob_threshold) {
+            needs_fallback = true;
+          }
+        }
+        if (!needs_fallback) break;
+      }
+    } finally {
+      generation_config.do_sample = orig_do_sample;
+      generation_config.temperature = orig_temperature;
+      generation_config.top_k = orig_top_k;
+      generation_config.return_dict_in_generate = orig_return_dict;
+    }
+    let seek_token_timestamps = null;
+    if (return_token_timestamps && outputs.cross_attentions) {
+      outputs["token_timestamps"] = this._extract_token_timestamps(
+        outputs,
+        generation_config.alignment_heads,
+        Math.floor((seek_end - seek) / input_stride),
+        0.02,
+        init_tokens.length
+      );
+      const time_offset = seek / input_stride * 0.02;
+      seek_token_timestamps = outputs.token_timestamps[0].tolist().slice(init_tokens.length).map((t) => t + time_offset);
+    }
+    if (generated_tokens.length > 0 && generated_tokens.at(-1) === eos_token_id) {
+      generated_tokens.pop();
+    }
+    return { generated_tokens, outputs, seek_token_timestamps };
+  }
+  /**
+   * Computes how far to advance the seek pointer based on generated tokens.
+   * @private
+   */
+  _compute_seek_advance(generated_tokens, timestamp_begin, segment_size, input_stride) {
+    const is_timestamp = generated_tokens.map((t) => t >= timestamp_begin);
+    const single_timestamp_ending = generated_tokens.length >= 2 && is_timestamp[generated_tokens.length - 1] && !is_timestamp[generated_tokens.length - 2];
+    const segment_boundary_indices = [];
+    for (let i = 0; i < generated_tokens.length - 1; ++i) {
+      if (is_timestamp[i] && is_timestamp[i + 1]) {
+        segment_boundary_indices.push(i + 1);
+      }
+    }
+    let segment_offset;
+    let tokens_to_keep = generated_tokens.length;
+    if (segment_boundary_indices.length > 0) {
+      if (single_timestamp_ending) {
+        segment_offset = segment_size;
+      } else {
+        const last_boundary = segment_boundary_indices.at(-1);
+        const last_ts_pos = generated_tokens[last_boundary - 1] - timestamp_begin;
+        segment_offset = last_ts_pos * input_stride;
+        tokens_to_keep = last_boundary;
+      }
+    } else {
+      segment_offset = segment_size;
+    }
+    return { segment_offset, tokens_to_keep };
   }
   /**
    * Calculates token-level timestamps using the encoder-decoder cross-attentions and
@@ -32035,6 +32167,11 @@ Pipeline {
 };
 
 // src/pipelines/automatic-speech-recognition.js
+var MIN_HALLUCINATION_CHUNK_S = 2;
+var MAX_HALLUCINATION_DEPTH = 3;
+var MIN_HALLUCINATION_TOKENS_PER_SECOND = 1;
+var TRUNCATION_GUARD_MIN_RATIO = 0.5;
+var TRUNCATION_GUARD_SCORE_MARGIN = 0.5;
 var AutomaticSpeechRecognitionPipeline = class extends /** @type {new (options: TextAudioPipelineConstructorArgs) => AutomaticSpeechRecognitionPipelineType} */
 Pipeline {
   async _call(audio, kwargs = {}) {
@@ -32088,11 +32225,16 @@ Pipeline {
     const return_timestamps = kwargs.return_timestamps ?? false;
     const chunk_length_s = kwargs.chunk_length_s ?? 0;
     const force_full_sequences = kwargs.force_full_sequences ?? false;
+    const hallucination_recovery = kwargs.hallucination_recovery ?? true;
     let stride_length_s = kwargs.stride_length_s ?? null;
     const generation_config = { ...kwargs };
+    generation_config["hallucination_recovery"] = hallucination_recovery;
     if (return_timestamps === "word") {
       generation_config["return_token_timestamps"] = true;
       generation_config["return_timestamps"] = true;
+    }
+    if (hallucination_recovery) {
+      generation_config["return_dict_in_generate"] = true;
     }
     const single = !Array.isArray(audio);
     const batchedAudio = single ? [audio] : audio;
@@ -32137,27 +32279,48 @@ Pipeline {
           }
         ];
       }
-      for (const chunk2 of chunks) {
-        generation_config.num_frames = Math.floor(chunk2.stride[0] / hop_length);
-        const data = await this.model.generate({
-          inputs: chunk2.input_features,
-          ...generation_config
-        });
-        if (return_timestamps === "word") {
-          const sequences = data.sequences.tolist()[0];
-          const token_ts = data.token_timestamps.tolist()[0];
-          const timestamp_begin = this.tokenizer.timestamp_begin;
-          const prefixLength = Math.max(
-            sequences.findIndex((t) => Number(t) >= timestamp_begin),
-            0
+      const timestamp_begin = this.tokenizer.timestamp_begin;
+      if (hallucination_recovery) {
+        const processedChunks = [];
+        const chunkJump = chunk_length_s > 0 ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6) : 0;
+        for (let ci = 0; ci < chunks.length; ++ci) {
+          const audioOffset = ci * chunkJump;
+          const result = await this._processChunkWithRetry(
+            chunks[ci],
+            aud,
+            generation_config,
+            return_timestamps,
+            timestamp_begin,
+            hop_length,
+            sampling_rate,
+            audioOffset
           );
-          chunk2.tokens = sequences.slice(prefixLength);
-          chunk2.token_timestamps = token_ts.slice(prefixLength).map((x) => round(x, 2));
-        } else {
-          chunk2.tokens = /** @type {Tensor} */
-          data[0].tolist();
+          processedChunks.push(...result.chunks);
         }
-        chunk2.stride = chunk2.stride.map((x) => x / sampling_rate);
+        chunks = processedChunks;
+      } else {
+        for (const chunk2 of chunks) {
+          generation_config.num_frames = Math.floor(chunk2.stride[0] / hop_length);
+          const data = await this.model.generate({
+            inputs: chunk2.input_features,
+            ...generation_config
+          });
+          if (return_timestamps === "word") {
+            const sequences = data.sequences.tolist()[0];
+            const token_ts = data.token_timestamps.tolist()[0];
+            const prefixLength = Math.max(
+              sequences.findIndex((t) => Number(t) >= timestamp_begin),
+              0
+            );
+            chunk2.tokens = sequences.slice(prefixLength);
+            chunk2.token_timestamps = token_ts.slice(prefixLength).map((x) => round(x, 2));
+          } else {
+            const sequences = data?.sequences ?? data;
+            chunk2.tokens = /** @type {Tensor} */
+            sequences[0].tolist();
+          }
+          chunk2.stride = chunk2.stride.map((x) => x / sampling_rate);
+        }
       }
       const [full_text, optional] = this.tokenizer._decode_asr(chunks, {
         time_precision,
@@ -32167,6 +32330,237 @@ Pipeline {
       toReturn.push({ text: full_text, ...optional });
     }
     return single ? toReturn[0] : toReturn;
+  }
+  /**
+   * Processes a single audio chunk, detecting hallucination (very low token density)
+   * and recursively splitting into smaller sub-chunks when needed.
+   * @private
+   */
+  async _processChunkWithRetry(chunk2, fullAudio, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate, audioOffset = 0, depth = 0) {
+    const chunk_duration_s = chunk2.stride[0] / sampling_rate;
+    const logprob_threshold = generation_config.logprob_threshold ?? -1;
+    const original = await this._generateChunkResult(
+      chunk2,
+      generation_config,
+      return_timestamps,
+      timestamp_begin,
+      hop_length,
+      sampling_rate
+    );
+    if (chunk_duration_s <= MIN_HALLUCINATION_CHUNK_S || !this._shouldRetryChunk(original, chunk_duration_s, logprob_threshold)) {
+      return original;
+    }
+    if (depth < MAX_HALLUCINATION_DEPTH) {
+      const split = await this._splitChunkWithRetry(
+        chunk2,
+        fullAudio,
+        generation_config,
+        return_timestamps,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        audioOffset,
+        depth
+      );
+      return this._chooseBetterChunkResult(original, split);
+    }
+    const padded = await this._generatePaddedChunkResult(
+      chunk2,
+      fullAudio,
+      generation_config,
+      return_timestamps,
+      timestamp_begin,
+      hop_length,
+      sampling_rate,
+      audioOffset
+    );
+    return this._chooseBetterChunkResult(original, padded);
+  }
+  async _generateChunkResult(chunk2, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate) {
+    generation_config.num_frames = Math.floor(chunk2.stride[0] / hop_length);
+    const data = await this.model.generate({
+      inputs: chunk2.input_features,
+      ...generation_config
+    });
+    return this._buildChunkResult({
+      chunk: chunk2,
+      data,
+      return_timestamps,
+      timestamp_begin,
+      sampling_rate
+    });
+  }
+  _buildChunkResult({ chunk: chunk2, data, return_timestamps, timestamp_begin, sampling_rate, timestamp_shift_s = 0 }) {
+    const outputChunk = {
+      stride: chunk2.stride.map((x) => x / sampling_rate),
+      is_last: chunk2.is_last
+    };
+    if (return_timestamps === "word") {
+      const sequences = data.sequences.tolist()[0];
+      const token_ts = data.token_timestamps.tolist()[0];
+      const prefixLength = Math.max(
+        sequences.findIndex((t) => Number(t) >= timestamp_begin),
+        0
+      );
+      outputChunk.tokens = sequences.slice(prefixLength);
+      outputChunk.token_timestamps = token_ts.slice(prefixLength).map(
+        (x) => round(Math.max(0, x + timestamp_shift_s), 2)
+      );
+    } else {
+      const sequences = data?.sequences ?? data;
+      outputChunk.tokens = /** @type {Tensor} */
+      sequences[0].tolist();
+    }
+    const text_token_count = this._countTextTokens(outputChunk.tokens ?? [], timestamp_begin);
+    const total_logprob = data?.scores?.[0] ?? null;
+    return {
+      chunks: [outputChunk],
+      total_logprob,
+      text_token_count,
+      avg_logprob: total_logprob !== null && text_token_count > 0 ? total_logprob / text_token_count : null,
+      has_valid_timestamps: outputChunk.token_timestamps === void 0 || this._hasValidTokenTimestamps(outputChunk.token_timestamps)
+    };
+  }
+  _countTextTokens(tokens, timestamp_begin) {
+    const all_special_ids = new Set(this.tokenizer.all_special_ids);
+    return tokens.filter((token) => {
+      const value = Number(token);
+      return value < timestamp_begin && !all_special_ids.has(value);
+    }).length;
+  }
+  _hasValidTokenTimestamps(token_timestamps) {
+    let prev = -Infinity;
+    for (const timestamp of token_timestamps) {
+      if (!Number.isFinite(timestamp) || timestamp < 0 || timestamp < prev) {
+        return false;
+      }
+      prev = timestamp;
+    }
+    return true;
+  }
+  _shouldRetryChunk(result, chunk_duration_s, logprob_threshold) {
+    const tokens_per_second = result.text_token_count / Math.max(chunk_duration_s, 0.1);
+    const low_text_coverage = tokens_per_second < MIN_HALLUCINATION_TOKENS_PER_SECOND;
+    const low_logprob = result.avg_logprob === null ? result.text_token_count === 0 : result.avg_logprob < logprob_threshold;
+    return low_text_coverage && low_logprob;
+  }
+  _chooseBetterChunkResult(a, b) {
+    const pickBetterByScore = (first, second) => {
+      const first_score = first.avg_logprob ?? -Infinity;
+      const second_score = second.avg_logprob ?? -Infinity;
+      return first_score >= second_score ? first : second;
+    };
+    const first_empty = a.text_token_count === 0;
+    const second_empty = b.text_token_count === 0;
+    if (first_empty !== second_empty) {
+      return first_empty ? b : a;
+    }
+    if (a.has_valid_timestamps !== b.has_valid_timestamps) {
+      return a.has_valid_timestamps ? a : b;
+    }
+    const better = pickBetterByScore(a, b);
+    const other = better === a ? b : a;
+    if (better.text_token_count > 0 && other.text_token_count > 0 && better.text_token_count < other.text_token_count * TRUNCATION_GUARD_MIN_RATIO) {
+      const score_margin = (better.avg_logprob ?? -Infinity) - (other.avg_logprob ?? -Infinity);
+      if (score_margin < TRUNCATION_GUARD_SCORE_MARGIN) {
+        return other;
+      }
+    }
+    return better;
+  }
+  _combineChunkResults(results) {
+    const chunks = [];
+    let total_logprob = 0;
+    let has_any_score = false;
+    let text_token_count = 0;
+    let has_valid_timestamps = true;
+    for (const result of results) {
+      chunks.push(...result.chunks);
+      text_token_count += result.text_token_count;
+      has_valid_timestamps &&= result.has_valid_timestamps;
+      if (result.total_logprob !== null) {
+        total_logprob += result.total_logprob;
+        has_any_score = true;
+      }
+    }
+    return {
+      chunks,
+      total_logprob: has_any_score ? total_logprob : null,
+      text_token_count,
+      avg_logprob: has_any_score && text_token_count > 0 ? total_logprob / text_token_count : null,
+      has_valid_timestamps
+    };
+  }
+  async _splitChunkWithRetry(chunk2, fullAudio, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate, audioOffset, depth) {
+    const half_s = chunk2.stride[0] / sampling_rate / 2;
+    const sub_stride_s = Math.min(half_s / 6, 2);
+    const sub_window = Math.round(sampling_rate * half_s);
+    const sub_stride_samples = Math.round(sampling_rate * sub_stride_s);
+    const sub_jump = sub_window - 2 * sub_stride_samples;
+    const chunk_audio_len = chunk2.stride[0];
+    const sub_results = [];
+    let sub_offset = 0;
+    while (true) {
+      const sub_end = sub_offset + sub_window;
+      const subarr = fullAudio.subarray(audioOffset + sub_offset, audioOffset + sub_end);
+      const feature = await this.processor(subarr);
+      const is_first = sub_offset === 0;
+      const is_last = sub_end >= chunk_audio_len;
+      const sub_chunk = {
+        stride: [subarr.length, is_first ? 0 : sub_stride_samples, is_last ? 0 : sub_stride_samples],
+        input_features: feature.input_features,
+        is_last
+      };
+      sub_results.push(
+        await this._processChunkWithRetry(
+          sub_chunk,
+          fullAudio,
+          generation_config,
+          return_timestamps,
+          timestamp_begin,
+          hop_length,
+          sampling_rate,
+          audioOffset + sub_offset,
+          depth + 1
+        )
+      );
+      if (is_last) break;
+      sub_offset += sub_jump;
+    }
+    const combined = this._combineChunkResults(sub_results);
+    if (combined.chunks.length > 0) {
+      combined.chunks[0].stride[1] = chunk2.stride[1] / sampling_rate;
+      combined.chunks[combined.chunks.length - 1].stride[2] = chunk2.stride[2] / sampling_rate;
+    }
+    return combined;
+  }
+  async _generatePaddedChunkResult(chunk2, fullAudio, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate, audioOffset) {
+    const silence_samples = Math.round(sampling_rate * 0.5);
+    const padded_audio = new Float32Array(silence_samples + chunk2.stride[0]);
+    padded_audio.set(fullAudio.subarray(audioOffset, audioOffset + chunk2.stride[0]), silence_samples);
+    const padded_feature = await this.processor(padded_audio);
+    const padded_chunk = {
+      stride: [padded_audio.length, 0, 0],
+      input_features: padded_feature.input_features,
+      is_last: chunk2.is_last
+    };
+    const result = await this._generateChunkResult(
+      padded_chunk,
+      generation_config,
+      return_timestamps,
+      timestamp_begin,
+      hop_length,
+      sampling_rate
+    );
+    if (return_timestamps === "word" && result.chunks[0].token_timestamps) {
+      const silence_s = silence_samples / sampling_rate;
+      result.chunks[0].token_timestamps = result.chunks[0].token_timestamps.map(
+        (timestamp) => round(Math.max(0, timestamp - silence_s), 2)
+      );
+      result.has_valid_timestamps = this._hasValidTokenTimestamps(result.chunks[0].token_timestamps);
+    }
+    result.chunks[0].stride = chunk2.stride.map((x) => x / sampling_rate);
+    return result;
   }
   async _call_moonshine(audio, kwargs) {
     const single = !Array.isArray(audio);

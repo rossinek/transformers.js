@@ -155,6 +155,14 @@ test("whisper benchmark — single clip analysis", async ({ page }) => {
   console.log(`\nRunning single clip: ${clipName}`);
   console.log("─".repeat(70));
 
+  // Capture browser console for debug output
+  page.on('console', msg => {
+    const text = msg.text();
+    if (text.startsWith('[SEQ') || text.startsWith('[MERGE') || text.startsWith('[LEFTOVER') || text.startsWith('  ')) {
+      console.log(`  BROWSER: ${text}`);
+    }
+  });
+
   const { metrics, results } = await runBenchmark(page, clipName);
 
   const m = metrics?.[clipName];

@@ -1042,9 +1042,7 @@ export class PreTrainedModel extends Callable {
                 past_key_values,
                 ...attentions,
                 ...return_dict_items,
-                // TODO:
-                // scores,
-                // logits,
+                scores,
             };
         } else {
             // Dispose all remaining tensors

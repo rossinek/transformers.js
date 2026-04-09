@@ -25,10 +25,31 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
     /**
      * Generates with a seek loop for timestamp mode, re-encoding and generating
      * for each segment until all audio frames are consumed.
-     * This matches Python's WhisperForConditionalGeneration.generate() behavior.
+     * Includes temperature fallback to handle hallucinations, matching Python's
+     * WhisperForConditionalGeneration.generate() behavior.
      * @private
      */
     private _generate_with_seek;
+    /**
+     * Resolves the temperature schedule used for hallucination recovery.
+     * @private
+     */
+    private _get_fallback_temperatures;
+    /**
+     * Pads a mel spectrogram segment to the full segment size.
+     * @private
+     */
+    private _pad_segment;
+    /**
+     * Generates tokens for a single segment with temperature fallback.
+     * @private
+     */
+    private _generate_segment;
+    /**
+     * Computes how far to advance the seek pointer based on generated tokens.
+     * @private
+     */
+    private _compute_seek_advance;
     /**
      * Calculates token-level timestamps using the encoder-decoder cross-attentions and
      * dynamic time-warping (DTW) to map each output token to a position in the input audio.

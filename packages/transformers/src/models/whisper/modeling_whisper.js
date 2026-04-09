@@ -114,7 +114,10 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
 
         ...kwargs
     }) {
+        const temperature_is_explicit =
+            kwargs.temperature !== undefined || generation_config?.temperature !== undefined;
         generation_config = this._prepare_generation_config(generation_config, kwargs);
+        generation_config['_temperature_is_explicit'] = temperature_is_explicit;
 
         const init_tokens = kwargs.decoder_input_ids ?? this._retrieve_init_tokens(generation_config);
 
@@ -156,7 +159,6 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 generation_config,
                 logits_processor,
                 init_tokens,
-                kwargs,
             });
         }
 
@@ -185,15 +187,21 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
     /**
      * Generates with a seek loop for timestamp mode, re-encoding and generating
      * for each segment until all audio frames are consumed.
-     * This matches Python's WhisperForConditionalGeneration.generate() behavior.
+     * Includes temperature fallback to handle hallucinations, matching Python's
+     * WhisperForConditionalGeneration.generate() behavior.
      * @private
      */
-    async _generate_with_seek({ inputs, generation_config, logits_processor, init_tokens, kwargs }) {
+    async _generate_with_seek({ inputs, generation_config, logits_processor, init_tokens }) {
         const timestamp_begin = generation_config.no_timestamps_token_id + 1;
         const eos_token_id = Array.isArray(generation_config.eos_token_id)
             ? generation_config.eos_token_id[0]
             : generation_config.eos_token_id;
         const return_token_timestamps = generation_config.return_token_timestamps;
+        const hallucination_recovery = generation_config.hallucination_recovery !== false;
+
+        // Temperature fallback configuration (matches Python's defaults)
+        const fallback_temperatures = hallucination_recovery ? this._get_fallback_temperatures(generation_config) : null;
+        const logprob_threshold = hallucination_recovery ? generation_config.logprob_threshold ?? -1.0 : null;
 
         // input_features shape: [batch=1, n_mels, total_frames]
         const input_features = inputs;
@@ -210,6 +218,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         let seek = 0;
         const allTokens = [];
         const allTokenTimestamps = [];
+        let accumulated_score = 0;
 
         while (seek < total_frames) {
             // Slice input features for this segment
@@ -217,116 +226,38 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             const segment_input = input_features.slice(null, null, [seek, seek_end]);
 
             // Pad to full segment size if needed (whisper expects fixed-length input)
-            let segment_features;
             const segment_frames = segment_input.dims[2];
-            if (segment_frames < num_segment_frames) {
-                const n_mels = input_features.dims[1];
-                const padded_data = new Float32Array(n_mels * num_segment_frames);
-                const src = /** @type {Float32Array} */ (segment_input.data);
-                // Copy each mel band row separately to handle the stride difference
-                for (let m = 0; m < n_mels; ++m) {
-                    padded_data.set(src.subarray(m * segment_frames, (m + 1) * segment_frames), m * num_segment_frames);
-                }
-                segment_features = new Tensor('float32', padded_data, [1, n_mels, num_segment_frames]);
-            } else {
-                segment_features = segment_input;
-            }
+            const segment_features = this._pad_segment(segment_input, segment_frames, num_segment_frames);
 
-            // Reset logits processor begin_index for each segment
-            if (logits_processor) {
-                for (const proc of logits_processor) {
-                    if ('begin_index' in proc) {
-                        proc.begin_index = init_tokens.length;
-                    }
-                }
-            }
-
-            const outputs = /** @type {any} */ (
-                await super.generate({
-                    inputs: segment_features,
-                    generation_config,
-                    logits_processor,
-                    decoder_input_ids: init_tokens,
-                    ...kwargs,
-                })
-            );
-
-            // Extract tokens (skip init_tokens prefix)
-            const raw_sequence = return_token_timestamps ? outputs.sequences : /** @type {Tensor} */ (outputs);
-            const generated_tokens = raw_sequence[0].tolist().map(Number).slice(init_tokens.length);
-
-            // Extract token-level timestamps for this seek pass if needed
-            let seek_token_timestamps;
-            if (return_token_timestamps) {
-                outputs['token_timestamps'] = this._extract_token_timestamps(
-                    outputs,
-                    generation_config.alignment_heads,
-                    Math.floor((seek_end - seek) / input_stride),
-                    0.02,
-                    init_tokens.length,
-                );
-                const time_offset = (seek / input_stride) * 0.02;
-                seek_token_timestamps = outputs.token_timestamps[0]
-                    .tolist()
-                    .slice(init_tokens.length)
-                    .map((/** @type {number} */ t) => t + time_offset);
-            }
-
-            // Remove trailing EOS
-            if (generated_tokens.length > 0 && generated_tokens.at(-1) === eos_token_id) {
-                generated_tokens.pop();
-            }
+            const { generated_tokens, outputs, seek_token_timestamps } = await this._generate_segment({
+                segment_features,
+                generation_config,
+                logits_processor,
+                init_tokens,
+                fallback_temperatures,
+                logprob_threshold,
+                timestamp_begin,
+                eos_token_id,
+                return_token_timestamps,
+                seek,
+                seek_end,
+                input_stride,
+            });
 
             if (generated_tokens.length === 0) {
                 // No tokens generated — skip the rest of the audio
                 break;
             }
 
-            // Determine seek advancement using the same logic as Python's _retrieve_segment:
-            // 1. Find consecutive timestamp token pairs (segment boundaries)
-            // 2. If the sequence ends with a single timestamp (no speech after it),
-            //    consume all remaining frames in this segment
-            // 3. Otherwise, seek to the last complete segment boundary
-            const is_timestamp = generated_tokens.map((t) => t >= timestamp_begin);
+            // Determine seek advancement using the same logic as Python's _retrieve_segment
+            const { segment_offset, tokens_to_keep } = this._compute_seek_advance(
+                generated_tokens,
+                timestamp_begin,
+                seek_end - seek,
+                input_stride,
+            );
 
-            // Check for single_timestamp_ending: last token is timestamp, second-to-last is not
-            const single_timestamp_ending =
-                generated_tokens.length >= 2 &&
-                is_timestamp[generated_tokens.length - 1] &&
-                !is_timestamp[generated_tokens.length - 2];
-
-            // Find consecutive timestamp pairs (segment boundaries)
-            const segment_boundary_indices = [];
-            for (let i = 0; i < generated_tokens.length - 1; ++i) {
-                if (is_timestamp[i] && is_timestamp[i + 1]) {
-                    segment_boundary_indices.push(i + 1); // index of the second token in the pair
-                }
-            }
-
-            let segment_offset;
-            let tokens_to_keep = generated_tokens.length;
-            if (segment_boundary_indices.length > 0) {
-                if (single_timestamp_ending) {
-                    // Ends with a single timestamp after the last pair — no more speech
-                    segment_offset = seek_end - seek;
-                } else {
-                    // Ends mid-segment — seek to the last pair's end timestamp
-                    // Discard tokens after the last pair (they're from an incomplete segment)
-                    // Keep up to the first token of the last pair (the end-of-segment timestamp),
-                    // excluding the second token (the start-of-next-segment marker)
-                    const last_boundary = segment_boundary_indices.at(-1);
-                    const last_ts_pos = generated_tokens[last_boundary - 1] - timestamp_begin;
-                    segment_offset = last_ts_pos * input_stride;
-                    tokens_to_keep = last_boundary;
-                }
-            } else {
-                // No consecutive pairs found — consume entire segment
-                segment_offset = seek_end - seek;
-            }
-
-            // Offset timestamp tokens by the current seek position so they're
-            // monotonically increasing across segments. Cap at the maximum valid
-            // timestamp token (30.00s = 1500 positions) to stay within the token vocab.
+            // Offset timestamp tokens by the current seek position
             const timestamp_offset = Math.floor(seek / input_stride);
             const max_timestamp_token = timestamp_begin + 1500;
             for (let i = 0; i < tokens_to_keep; ++i) {
@@ -339,6 +270,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             if (seek_token_timestamps) {
                 allTokenTimestamps.push(...seek_token_timestamps.slice(0, tokens_to_keep));
             }
+            accumulated_score += outputs?.scores?.[0] ?? 0;
             seek += segment_offset;
         }
 
@@ -347,18 +279,217 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
 
         // Reconstruct output
         const full_sequence = [...init_tokens, ...allTokens];
-        if (return_token_timestamps) {
-            // Return dict format with sequences and token_timestamps
-            const sequences = new Tensor('int64', full_sequence.map(BigInt), [1, full_sequence.length]);
-            // Pad token_timestamps to match full_sequence (init_tokens get 0.0)
-            const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, 0];
-            const token_timestamps = new Tensor('float32', new Float32Array(full_timestamps), [
-                1,
-                full_timestamps.length,
-            ]);
-            return { sequences, token_timestamps };
+        const sequences = new Tensor('int64', full_sequence.map(BigInt), [1, full_sequence.length]);
+        if (return_token_timestamps || generation_config.return_dict_in_generate) {
+            const output = { sequences };
+
+            if (return_token_timestamps) {
+                const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, 0];
+                output['token_timestamps'] = new Tensor('float32', new Float32Array(full_timestamps), [
+                    1,
+                    full_timestamps.length,
+                ]);
+            }
+            if (generation_config.return_dict_in_generate) {
+                output['scores'] = [accumulated_score];
+            }
+            return output;
         }
-        return new Tensor('int64', full_sequence.map(BigInt), [1, full_sequence.length]);
+        return sequences;
+    }
+
+    /**
+     * Resolves the temperature schedule used for hallucination recovery.
+     * @private
+     */
+    _get_fallback_temperatures(generation_config) {
+        if (!generation_config._temperature_is_explicit) {
+            return [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+        }
+
+        const temperatures = generation_config.temperature;
+        if (Array.isArray(temperatures) && temperatures.length > 0) {
+            return temperatures;
+        }
+        if (typeof temperatures === 'number') {
+            return [temperatures];
+        }
+        return [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+    }
+
+    /**
+     * Pads a mel spectrogram segment to the full segment size.
+     * @private
+     */
+    _pad_segment(segment_input, segment_frames, num_segment_frames) {
+        if (segment_frames < num_segment_frames) {
+            const n_mels = segment_input.dims[1];
+            const padded_data = new Float32Array(n_mels * num_segment_frames);
+            const src = /** @type {Float32Array} */ (segment_input.data);
+            for (let m = 0; m < n_mels; ++m) {
+                padded_data.set(src.subarray(m * segment_frames, (m + 1) * segment_frames), m * num_segment_frames);
+            }
+            return new Tensor('float32', padded_data, [1, n_mels, num_segment_frames]);
+        }
+        return segment_input;
+    }
+
+    /**
+     * Generates tokens for a single segment with temperature fallback.
+     * @private
+     */
+    async _generate_segment({
+        segment_features,
+        generation_config,
+        logits_processor,
+        init_tokens,
+        fallback_temperatures,
+        logprob_threshold,
+        timestamp_begin,
+        eos_token_id,
+        return_token_timestamps,
+        seek,
+        seek_end,
+        input_stride,
+    }) {
+        let generated_tokens;
+        let outputs;
+
+        // Save original config values to restore after temperature fallback
+        const orig_do_sample = generation_config.do_sample;
+        const orig_temperature = generation_config.temperature;
+        const orig_top_k = generation_config.top_k;
+        const orig_return_dict = generation_config.return_dict_in_generate;
+
+        try {
+            const attempts = fallback_temperatures?.length ? fallback_temperatures : [null];
+            for (let t_idx = 0; t_idx < attempts.length; ++t_idx) {
+                const temperature = attempts[t_idx];
+
+                // Start each attempt from the caller's original config.
+                generation_config.do_sample = orig_do_sample;
+                generation_config.temperature = orig_temperature;
+                generation_config.top_k = orig_top_k;
+                generation_config.return_dict_in_generate =
+                    orig_return_dict || return_token_timestamps || temperature !== null;
+
+                // Configure temperature: 0 = greedy, >0 = sampling
+                if (temperature === 0) {
+                    generation_config.do_sample = false;
+                    generation_config.temperature = 1.0;
+                } else if (typeof temperature === 'number') {
+                    generation_config.do_sample = true;
+                    generation_config.temperature = temperature;
+                    generation_config.top_k = 0;
+                }
+
+                // Reset logits processor begin_index for each attempt
+                if (logits_processor) {
+                    for (const proc of logits_processor) {
+                        if ('begin_index' in proc) {
+                            proc.begin_index = init_tokens.length;
+                        }
+                    }
+                }
+
+                outputs = /** @type {any} */ (
+                    await super.generate({
+                        inputs: segment_features,
+                        generation_config,
+                        logits_processor,
+                        decoder_input_ids: init_tokens,
+                    })
+                );
+
+                const raw_sequence = generation_config.return_dict_in_generate ? outputs.sequences : outputs;
+                generated_tokens = raw_sequence[0].tolist().map(Number).slice(init_tokens.length);
+
+                // On last temperature, accept whatever we got
+                if (t_idx === attempts.length - 1 || temperature === null) break;
+
+                // Quality check: average log probability (matches Python's logprob_threshold)
+                let needs_fallback = false;
+                if (logprob_threshold !== null && outputs.scores) {
+                    const total_score = outputs.scores[0] ?? 0;
+                    const text_token_count = generated_tokens.filter(
+                        (token) => token < timestamp_begin && token !== eos_token_id,
+                    ).length;
+                    const avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
+                    if (avg_logprob < logprob_threshold) {
+                        needs_fallback = true;
+                    }
+                }
+
+                if (!needs_fallback) break;
+            }
+        } finally {
+            // Restore original config values
+            generation_config.do_sample = orig_do_sample;
+            generation_config.temperature = orig_temperature;
+            generation_config.top_k = orig_top_k;
+            generation_config.return_dict_in_generate = orig_return_dict;
+        }
+
+        // Extract token-level timestamps if needed
+        let seek_token_timestamps = null;
+        if (return_token_timestamps && outputs.cross_attentions) {
+            outputs['token_timestamps'] = this._extract_token_timestamps(
+                outputs,
+                generation_config.alignment_heads,
+                Math.floor((seek_end - seek) / input_stride),
+                0.02,
+                init_tokens.length,
+            );
+            const time_offset = (seek / input_stride) * 0.02;
+            seek_token_timestamps = outputs.token_timestamps[0]
+                .tolist()
+                .slice(init_tokens.length)
+                .map((/** @type {number} */ t) => t + time_offset);
+        }
+
+        // Remove trailing EOS
+        if (generated_tokens.length > 0 && generated_tokens.at(-1) === eos_token_id) {
+            generated_tokens.pop();
+        }
+
+        return { generated_tokens, outputs, seek_token_timestamps };
+    }
+
+    /**
+     * Computes how far to advance the seek pointer based on generated tokens.
+     * @private
+     */
+    _compute_seek_advance(generated_tokens, timestamp_begin, segment_size, input_stride) {
+        const is_timestamp = generated_tokens.map((t) => t >= timestamp_begin);
+
+        const single_timestamp_ending =
+            generated_tokens.length >= 2 &&
+            is_timestamp[generated_tokens.length - 1] &&
+            !is_timestamp[generated_tokens.length - 2];
+
+        const segment_boundary_indices = [];
+        for (let i = 0; i < generated_tokens.length - 1; ++i) {
+            if (is_timestamp[i] && is_timestamp[i + 1]) {
+                segment_boundary_indices.push(i + 1);
+            }
+        }
+
+        let segment_offset;
+        let tokens_to_keep = generated_tokens.length;
+        if (segment_boundary_indices.length > 0) {
+            if (single_timestamp_ending) {
+                segment_offset = segment_size;
+            } else {
+                const last_boundary = segment_boundary_indices.at(-1);
+                const last_ts_pos = generated_tokens[last_boundary - 1] - timestamp_begin;
+                segment_offset = last_ts_pos * input_stride;
+                tokens_to_keep = last_boundary;
+            }
+        } else {
+            segment_offset = segment_size;
+        }
+
+        return { segment_offset, tokens_to_keep };
     }
 
     /**

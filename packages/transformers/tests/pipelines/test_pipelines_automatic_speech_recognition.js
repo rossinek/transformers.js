@@ -458,5 +458,78 @@ export default () => {
         await pipe?.dispose();
       }, MAX_MODEL_DISPOSE_TIME);
     });
+
+    describe("hallucination recovery helpers", () => {
+      /** @type {AutomaticSpeechRecognitionPipeline} */
+      let pipe;
+      beforeEach(() => {
+        pipe = Object.create(AutomaticSpeechRecognitionPipeline.prototype);
+        pipe.tokenizer = {
+          all_special_ids: [1, 2, 3, 4],
+        };
+      });
+
+      it("counts only text tokens for recovery heuristics", () => {
+        const count = pipe._countTextTokens([1n, 7n, 8n, 12n, 20n, 2n], 10);
+        expect(count).toBe(2);
+      });
+
+      it("keeps fuller candidate when shorter one is only slightly better", () => {
+        const fuller = {
+          chunks: [{ stride: [5, 0, 0], tokens: [7n, 8n, 9n, 10n] }],
+          total_logprob: -6.6,
+          text_token_count: 4,
+          avg_logprob: -1.65,
+          has_valid_timestamps: true,
+        };
+        const shorter = {
+          chunks: [{ stride: [5, 0, 0], tokens: [7n] }],
+          total_logprob: -1.3,
+          text_token_count: 1,
+          avg_logprob: -1.3,
+          has_valid_timestamps: true,
+        };
+
+        expect(pipe._chooseBetterChunkResult(fuller, shorter)).toBe(fuller);
+      });
+
+      it("allows a much stronger shorter candidate to win", () => {
+        const fuller = {
+          chunks: [{ stride: [5, 0, 0], tokens: [7n, 8n, 9n, 10n] }],
+          total_logprob: -8,
+          text_token_count: 4,
+          avg_logprob: -2,
+          has_valid_timestamps: true,
+        };
+        const shorter = {
+          chunks: [{ stride: [5, 0, 0], tokens: [7n] }],
+          total_logprob: -1,
+          text_token_count: 1,
+          avg_logprob: -1,
+          has_valid_timestamps: true,
+        };
+
+        expect(pipe._chooseBetterChunkResult(fuller, shorter)).toBe(shorter);
+      });
+
+      it("rejects clearly broken timestamps when a valid alternative exists", () => {
+        const valid = {
+          chunks: [{ stride: [5, 0, 0], tokens: [7n, 8n] }],
+          total_logprob: -3.2,
+          text_token_count: 2,
+          avg_logprob: -1.6,
+          has_valid_timestamps: true,
+        };
+        const broken = {
+          chunks: [{ stride: [5, 0, 0], tokens: [7n, 8n] }],
+          total_logprob: -2.0,
+          text_token_count: 2,
+          avg_logprob: -1.0,
+          has_valid_timestamps: false,
+        };
+
+        expect(pipe._chooseBetterChunkResult(valid, broken)).toBe(valid);
+      });
+    });
   });
 };
