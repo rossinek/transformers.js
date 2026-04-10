@@ -82,7 +82,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
         for (const output of sequences) {
             // NOTE: python version has batches, so it uses [0]
             const token_ids = output.tokens;
-            const token_timestamps = returnWordTimestamps ? output.token_timestamps : null;
+            const token_timestamps = Array.isArray(output.token_timestamps) ? output.token_timestamps : null;
 
             // These keep track of timestamps within strides, which need
             // to be skipped and resolve all tokens in a single chunk.
@@ -189,7 +189,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                             // Handling merges
                             previous_tokens.push(current_tokens);
 
-                            if (returnWordTimestamps) {
+                            if (token_timestamps) {
                                 previous_token_timestamps.push(current_token_timestamps);
                             }
 
@@ -238,7 +238,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     // merges later and decode into text.
                     current_tokens.push(token);
 
-                    if (returnWordTimestamps) {
+                    if (token_timestamps) {
                         let start_time = round(token_timestamps[i] + time_offset, 2);
 
                         let end_time;
@@ -269,7 +269,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
             // Leftover tokens
             if (current_tokens.length > 0) {
                 previous_tokens.push(current_tokens);
-                if (returnWordTimestamps) {
+                if (token_timestamps) {
                     previous_token_timestamps.push(current_token_timestamps);
                 }
             } else if (previous_tokens.every((p) => p.length === 0)) {

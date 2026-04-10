@@ -143,6 +143,37 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         text: string;
     }[]>;
     _call_whisper(audio: any, kwargs: any): Promise<any>;
+    _transcribeWhisperVadSegments({ audio, vadResult, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, }: {
+        audio: any;
+        vadResult: any;
+        generation_config: any;
+        return_timestamps: any;
+        time_precision: any;
+        force_full_sequences: any;
+        timestamp_begin: any;
+        hop_length: any;
+        sampling_rate: any;
+        chunk_length_s: any;
+        stride_length_s: any;
+    }): Promise<{
+        output: {
+            text: any;
+            chunks?: undefined;
+        } | {
+            text: any;
+            chunks: any;
+        };
+        analyses: {
+            start_s: any;
+            end_s: any;
+            duration_s: number;
+            text_token_count: any;
+            avg_logprob: any;
+            tokens_per_second: number;
+            suspicious: boolean;
+        }[];
+    }>;
+    _shouldUseSegmentedVadTranscription(vadResult: any): boolean;
     _transcribeWhisperAudio({ audio, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, }: {
         audio: any;
         generation_config: any;
@@ -167,6 +198,14 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         }[];
     }>;
     _normalizeWordTimestampOutput(output: any): any;
+    _shiftOutputTimestamps(output: any, offset_s: any): any;
+    _combineTranscriptionOutputs(outputs: any, return_timestamps: any): {
+        text: any;
+        chunks?: undefined;
+    } | {
+        text: any;
+        chunks: any;
+    };
     _filterWordOutputToSentenceText(output: any, sentence_text: any): any;
     _getStrictRecoveryGenerationConfig(generation_config: any): any;
     _createWhisperChunks(audio: any, chunk_length_s: any, stride_length_s: any, sampling_rate: any): Promise<{

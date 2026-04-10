@@ -18841,7 +18841,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
     const all_special_ids = new Set(this.all_special_ids);
     for (const output of sequences) {
       const token_ids = output.tokens;
-      const token_timestamps = returnWordTimestamps ? output.token_timestamps : null;
+      const token_timestamps = Array.isArray(output.token_timestamps) ? output.token_timestamps : null;
       let last_timestamp = null;
       let first_timestamp = timestamp_begin;
       if ("stride" in output) {
@@ -18898,7 +18898,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
             } else {
               chunk2.timestamp[1] = rounded_time;
               previous_tokens.push(current_tokens);
-              if (returnWordTimestamps) {
+              if (token_timestamps) {
                 previous_token_timestamps.push(current_token_timestamps);
               }
               const [resolved_tokens, resolved_token_timestamps] = this.findLongestCommonSequence(
@@ -18931,7 +18931,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
           }
         } else {
           current_tokens.push(token);
-          if (returnWordTimestamps) {
+          if (token_timestamps) {
             let start_time = round(token_timestamps[i] + time_offset, 2);
             let end_time;
             if (i + 1 < token_timestamps.length) {
@@ -18953,7 +18953,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
       }
       if (current_tokens.length > 0) {
         previous_tokens.push(current_tokens);
-        if (returnWordTimestamps) {
+        if (token_timestamps) {
           previous_token_timestamps.push(current_token_timestamps);
         }
       } else if (previous_tokens.every((p) => p.length === 0)) {
@@ -36261,6 +36261,7 @@ var VAD_FALLBACK_WINDOW_PADDING_S = 0.75;
 var MIN_VAD_REMOVED_GAP_S = 8;
 var MIN_VAD_REMOVED_GAP_TOTAL_S = 12;
 var MIN_VAD_REMOVED_GAP_RATIO = 0.2;
+var MAX_SEGMENTED_VAD_SEGMENTS = 2;
 var EDGE_PUNCTUATION_REGEX = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
 function normalizeAlignmentWord(text) {
   return text.toLowerCase().replace(EDGE_PUNCTUATION_REGEX, "");
@@ -36356,8 +36357,7 @@ Pipeline {
         sampling_rate,
         voice_activity_detection
       );
-      const transcriptionAudio = vadResult.processedAudio;
-      if (vadResult.applied && transcriptionAudio.length === 0) {
+      if (vadResult.applied && vadResult.segments.length === 0) {
         const output2 = return_timestamps ? { text: "", chunks: [] } : { text: "" };
         if (voice_activity_detection && vadResult.debugMetadata) {
           output2.voice_activity_detection = vadResult.debugMetadata;
@@ -36366,8 +36366,21 @@ Pipeline {
         continue;
       }
       const timestamp_begin = this.tokenizer.timestamp_begin;
-      const vadPath = await this._transcribeWhisperAudio({
-        audio: transcriptionAudio,
+      const useSegmentedVadPath = this._shouldUseSegmentedVadTranscription(vadResult);
+      const activePath = useSegmentedVadPath ? await this._transcribeWhisperVadSegments({
+        audio: aud,
+        vadResult,
+        generation_config,
+        return_timestamps,
+        time_precision,
+        force_full_sequences,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        chunk_length_s,
+        stride_length_s
+      }) : await this._transcribeWhisperAudio({
+        audio: vadResult.applied ? vadResult.processedAudio : aud,
         generation_config,
         return_timestamps,
         time_precision,
@@ -36378,43 +36391,12 @@ Pipeline {
         chunk_length_s,
         stride_length_s
       });
-      let output = vadPath.output;
-      if (vadResult.applied && return_timestamps) {
-        remapWhisperOutputTimestamps(output, vadResult.segments, vadResult.originalDurationS);
-      }
-      if (vadResult.applied && hallucination_recovery) {
-        const fallbackWindows = this._collectFallbackWindows(vadPath.analyses, vadResult);
-        if (fallbackWindows.length > 0) {
-          const originalFallbackConfig = {
-            ...generation_config,
-            hallucination_recovery: false
-          };
-          const originalPath = await this._transcribeWhisperAudio({
-            audio: aud,
-            generation_config: originalFallbackConfig,
-            return_timestamps,
-            time_precision,
-            force_full_sequences,
-            timestamp_begin,
-            hop_length,
-            sampling_rate,
-            chunk_length_s,
-            stride_length_s
-          });
-          const remappedVadAnalyses = this._remapChunkAnalyses(vadPath.analyses, vadResult);
-          const shouldPreferOriginal = fallbackWindows.some(
-            (window2) => this._shouldPreferFallbackAnalysis(
-              this._scoreAnalysisWindow(remappedVadAnalyses, window2.start_s, window2.end_s),
-              this._scoreAnalysisWindow(originalPath.analyses, window2.start_s, window2.end_s)
-            )
-          );
-          if (shouldPreferOriginal) {
-            output = originalPath.output;
-          }
-        }
-      }
+      let output = activePath.output;
       if (return_timestamps === "word") {
         this._normalizeWordTimestampOutput(output);
+      }
+      if (vadResult.applied && !useSegmentedVadPath) {
+        output = remapWhisperOutputTimestamps(output, vadResult.segments, vadResult.originalDurationS);
       }
       if (voice_activity_detection && vadResult.debugMetadata) {
         output.voice_activity_detection = vadResult.debugMetadata;
@@ -36422,6 +36404,58 @@ Pipeline {
       toReturn.push(output);
     }
     return single ? toReturn[0] : toReturn;
+  }
+  async _transcribeWhisperVadSegments({
+    audio,
+    vadResult,
+    generation_config,
+    return_timestamps,
+    time_precision,
+    force_full_sequences,
+    timestamp_begin,
+    hop_length,
+    sampling_rate,
+    chunk_length_s,
+    stride_length_s
+  }) {
+    const outputs = [];
+    const analyses = [];
+    for (const segment of vadResult.segments) {
+      const startIndex = Math.max(0, Math.floor(segment.original_start_s * sampling_rate));
+      const endIndex = Math.min(audio.length, Math.ceil(segment.original_end_s * sampling_rate));
+      if (endIndex <= startIndex) {
+        continue;
+      }
+      const segmentAudio = audio.subarray(startIndex, endIndex);
+      const segmentPath = await this._transcribeWhisperAudio({
+        audio: segmentAudio,
+        generation_config,
+        return_timestamps,
+        time_precision,
+        force_full_sequences,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        chunk_length_s,
+        stride_length_s
+      });
+      this._shiftOutputTimestamps(segmentPath.output, segment.original_start_s);
+      analyses.push(
+        ...segmentPath.analyses.map((analysis) => ({
+          ...analysis,
+          start_s: analysis.start_s + segment.original_start_s,
+          end_s: analysis.end_s + segment.original_start_s
+        }))
+      );
+      outputs.push(segmentPath.output);
+    }
+    return {
+      output: this._combineTranscriptionOutputs(outputs, return_timestamps),
+      analyses
+    };
+  }
+  _shouldUseSegmentedVadTranscription(vadResult) {
+    return vadResult.applied && vadResult.segments.length > 1 && vadResult.segments.length <= MAX_SEGMENTED_VAD_SEGMENTS;
   }
   async _transcribeWhisperAudio({
     audio,
@@ -36439,11 +36473,15 @@ Pipeline {
     const processedChunks = [];
     const analyses = [];
     const hallucination_recovery = generation_config.hallucination_recovery !== false;
+    const decode_generation_config = return_timestamps && generation_config.return_token_timestamps !== true ? {
+      ...generation_config,
+      return_token_timestamps: true
+    } : generation_config;
     const chunkJump = chunk_length_s > 0 ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6) : 0;
     for (let ci = 0; ci < chunks.length; ++ci) {
       const audioOffset = ci * chunkJump;
-      const chunk_generation_config = ci === 0 || generation_config.carry_initial_prompt || generation_config.prompt_ids == null ? generation_config : {
-        ...generation_config,
+      const chunk_generation_config = ci === 0 || decode_generation_config.carry_initial_prompt || decode_generation_config.prompt_ids == null ? decode_generation_config : {
+        ...decode_generation_config,
         prompt_ids: null
       };
       let result;
@@ -36531,6 +36569,35 @@ Pipeline {
       output.text = deduped.map((chunk2) => chunk2.text).join("").trim();
     }
     return output;
+  }
+  _shiftOutputTimestamps(output, offset_s) {
+    if (!Array.isArray(output?.chunks) || !Number.isFinite(offset_s) || offset_s === 0) {
+      return output;
+    }
+    for (const chunk2 of output.chunks) {
+      if (!Array.isArray(chunk2?.timestamp) || chunk2.timestamp.length !== 2) {
+        continue;
+      }
+      if (typeof chunk2.timestamp[0] === "number") {
+        chunk2.timestamp[0] = round(chunk2.timestamp[0] + offset_s, 2);
+      }
+      if (typeof chunk2.timestamp[1] === "number") {
+        chunk2.timestamp[1] = round(chunk2.timestamp[1] + offset_s, 2);
+      }
+    }
+    return output;
+  }
+  _combineTranscriptionOutputs(outputs, return_timestamps) {
+    const filtered = outputs.filter((output) => typeof output?.text === "string" || Array.isArray(output?.chunks));
+    const combinedChunks = return_timestamps ? filtered.flatMap((output) => output.chunks ?? []) : null;
+    const text = combinedChunks && combinedChunks.length > 0 ? combinedChunks.map((chunk2) => chunk2.text ?? "").join("").trim() : filtered.map((output) => output.text ?? "").join("").trim();
+    if (!return_timestamps) {
+      return { text };
+    }
+    return {
+      text,
+      chunks: combinedChunks ?? []
+    };
   }
   _filterWordOutputToSentenceText(output, sentence_text) {
     if (!Array.isArray(output?.chunks) || typeof sentence_text !== "string" || sentence_text.trim().length === 0) {
@@ -36857,19 +36924,26 @@ Pipeline {
       stride: chunk2.stride.map((x) => x / sampling_rate),
       is_last: chunk2.is_last
     };
+    const token_timestamps = data?.token_timestamps?.tolist?.()?.[0]?.map(
+      (x) => round(Math.max(0, x + timestamp_shift_s), 2)
+    ) ?? null;
     if (return_timestamps === "word") {
       const sequences = data.sequences.tolist()[0];
-      const token_ts = data.token_timestamps.tolist()[0];
       const prefixLength = Math.max(
         sequences.findIndex((t) => Number(t) >= timestamp_begin),
         0
       );
       outputChunk.tokens = sequences.slice(prefixLength);
-      outputChunk.token_timestamps = token_ts.slice(prefixLength).map((x) => round(Math.max(0, x + timestamp_shift_s), 2));
+      if (token_timestamps) {
+        outputChunk.token_timestamps = token_timestamps.slice(prefixLength);
+      }
     } else {
       const sequences = data?.sequences ?? data;
       outputChunk.tokens = /** @type {Tensor} */
       sequences[0].tolist();
+      if (token_timestamps) {
+        outputChunk.token_timestamps = token_timestamps;
+      }
     }
     const text_token_count = this._countTextTokens(outputChunk.tokens ?? [], timestamp_begin);
     const total_logprob = data?.scores?.[0] ?? null;
@@ -37009,7 +37083,7 @@ Pipeline {
       hop_length,
       sampling_rate
     );
-    if (return_timestamps === "word" && result.chunks[0].token_timestamps) {
+    if (result.chunks[0].token_timestamps) {
       const silence_s = silence_samples / sampling_rate;
       result.chunks[0].token_timestamps = result.chunks[0].token_timestamps.map(
         (timestamp) => round(Math.max(0, timestamp - silence_s), 2)
