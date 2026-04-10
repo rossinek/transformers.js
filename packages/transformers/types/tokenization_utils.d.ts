@@ -111,15 +111,15 @@ export class PreTrainedTokenizer extends PreTrainedTokenizer_base {
         /**
          * List of token ids to be fed to a model.
          */
-        input_ids: Tensor | number[] | number[][];
+        input_ids: number[] | number[][] | Tensor;
         /**
          * List of indices specifying which tokens should be attended to by the model.
          */
-        attention_mask: Tensor | number[] | number[][];
+        attention_mask: number[] | number[][] | Tensor;
         /**
          * List of token type ids to be fed to a model.
          */
-        token_type_ids?: Tensor | number[] | number[][];
+        token_type_ids?: number[] | number[][] | Tensor;
     };
     /**
      * Encodes a single text using the preprocessor pipeline of the tokenizer.
@@ -298,15 +298,15 @@ export class PreTrainedTokenizer extends PreTrainedTokenizer_base {
         /**
          * List of token ids to be fed to a model.
          */
-        input_ids: Tensor | number[] | number[][];
+        input_ids: number[] | number[][] | Tensor;
         /**
          * List of indices specifying which tokens should be attended to by the model.
          */
-        attention_mask: Tensor | number[] | number[][];
+        attention_mask: number[] | number[][] | Tensor;
         /**
          * List of token type ids to be fed to a model.
          */
-        token_type_ids?: Tensor | number[] | number[][];
+        token_type_ids?: number[] | number[][] | Tensor;
     };
 }
 export type PretrainedTokenizerOptions = import("./utils/hub.js").PretrainedOptions;

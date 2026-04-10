@@ -47,10 +47,10 @@ export class RawImage {
      * @param {1|2|3|4} channels The number of channels.
      */
     constructor(data: Uint8ClampedArray | Uint8Array, width: number, height: number, channels: 1 | 2 | 3 | 4);
-    data: Uint8ClampedArray<ArrayBufferLike> | Uint8Array<ArrayBufferLike>;
+    data: Uint8Array<ArrayBufferLike> | Uint8ClampedArray<ArrayBufferLike>;
     width: number;
     height: number;
-    channels: 2 | 1 | 3 | 4;
+    channels: 3 | 2 | 1 | 4;
     /**
      * Returns the size of the image (width, height).
      * @returns {[number, number]} The size of the image (width, height).

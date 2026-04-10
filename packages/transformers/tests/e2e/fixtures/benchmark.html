@@ -383,8 +383,9 @@
     async function transcribeClip(clip) {
       const proc = new AudioProcessor();
       const audio = await proc.processUrl(`/fixtures/${clip.file}`);
-      const wr = await state.transcriber(audio, { language: clip.lang, return_timestamps: "word", chunk_length_s: 30, stride_length_s: 5 });
-      const sr = await state.transcriber(audio, { language: clip.lang, return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 });
+      const vadOpts = { pre_speech_pad_ms: 200, post_speech_pad_ms: 300, min_speech_ms: 150, min_silence_ms: 400, max_merge_gap_ms: 500, preserve_full_audio_if_empty: true };
+      const wr = await state.transcriber(audio, { language: clip.lang, return_timestamps: "word", chunk_length_s: 30, stride_length_s: 5, voice_activity_detection: vadOpts });
+      const sr = await state.transcriber(audio, { language: clip.lang, return_timestamps: true, chunk_length_s: 30, stride_length_s: 5, voice_activity_detection: vadOpts });
       return {
         word: { text: wr.text, chunks: (wr.chunks || []).map(c => ({ text: c.text, start: c.timestamp?.[0] ?? null, end: c.timestamp?.[1] ?? null })) },
         sentence: { text: sr.text, chunks: (sr.chunks || []).map(c => ({ text: c.text, start: c.timestamp?.[0] ?? null, end: c.timestamp?.[1] ?? null })) },

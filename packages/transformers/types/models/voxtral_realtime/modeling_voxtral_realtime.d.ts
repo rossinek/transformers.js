@@ -10,7 +10,7 @@ export class VoxtralRealtimeForConditionalGeneration extends VoxtralRealtimePreT
         [x: string]: any;
         input_features: any;
         stopping_criteria: any;
-    }): Promise<import("../modeling_outputs.js").ModelOutput | Tensor>;
+    }): Promise<Tensor | import("../modeling_outputs.js").ModelOutput>;
 }
 import { PreTrainedModel } from '../modeling_utils.js';
 import { Tensor } from '../../utils/tensor.js';

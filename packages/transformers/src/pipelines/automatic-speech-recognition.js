@@ -1,4 +1,5 @@
 import { Pipeline, prepareAudios } from './_base.js';
+import { preprocessAudioWithVoiceActivityDetection, remapWhisperOutputTimestamps } from './vad/index.js';
 
 import { Tensor } from '../utils/tensor.js';
 import { max, round } from '../utils/maths.js';
@@ -37,6 +38,8 @@ const TRUNCATION_GUARD_SCORE_MARGIN = 0.5;
  * @property {string} [language] The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
  * @property {string} [task] The task to perform. Default is `null`, meaning it should be auto-detected.
  * @property {number} [num_frames] The number of frames in the input audio.
+ * @property {boolean|{provider?: 'vad-web', pre_speech_pad_ms?: number, post_speech_pad_ms?: number, min_speech_ms?: number, min_silence_ms?: number, max_merge_gap_ms?: number, preserve_full_audio_if_empty?: boolean, debug?: boolean}} [voice_activity_detection]
+ * Optional browser-side voice activity detection preprocessing. Disabled by default.
  * @typedef {import('../generation/parameters.js').GenerationFunctionParameters & AutomaticSpeechRecognitionSpecificParams} AutomaticSpeechRecognitionConfig
  *
  * @callback AutomaticSpeechRecognitionPipelineCallbackSingle Transcribe the audio sequence given as inputs to text.
@@ -207,10 +210,12 @@ export class AutomaticSpeechRecognitionPipeline
         const chunk_length_s = kwargs.chunk_length_s ?? 0;
         const force_full_sequences = kwargs.force_full_sequences ?? false;
         const hallucination_recovery = kwargs.hallucination_recovery ?? true;
+        const voice_activity_detection = kwargs.voice_activity_detection ?? false;
         let stride_length_s = kwargs.stride_length_s ?? null;
 
         const generation_config = { ...kwargs };
         generation_config['hallucination_recovery'] = hallucination_recovery;
+        delete generation_config['voice_activity_detection'];
 
         if (return_timestamps === 'word') {
             generation_config['return_token_timestamps'] = true;
@@ -233,6 +238,21 @@ export class AutomaticSpeechRecognitionPipeline
 
         const toReturn = [];
         for (const aud of preparedAudios) {
+            const vadResult = await preprocessAudioWithVoiceActivityDetection(
+                aud,
+                sampling_rate,
+                voice_activity_detection,
+            );
+            const transcriptionAudio = vadResult.processedAudio;
+            if (vadResult.applied && transcriptionAudio.length === 0) {
+                const output = return_timestamps ? { text: '', chunks: [] } : { text: '' };
+                if (voice_activity_detection && vadResult.debugMetadata) {
+                    output.voice_activity_detection = vadResult.debugMetadata;
+                }
+                toReturn.push(output);
+                continue;
+            }
+
             /** @type {{stride: number[], input_features: Tensor, is_last: boolean, tokens?: bigint[], token_timestamps?: number[]}[]} */
             let chunks = [];
             if (chunk_length_s > 0) {
@@ -252,11 +272,11 @@ export class AutomaticSpeechRecognitionPipeline
                 // Create subarrays of audio with overlaps
                 while (true) {
                     const offset_end = offset + window;
-                    const subarr = aud.subarray(offset, offset_end);
+                    const subarr = transcriptionAudio.subarray(offset, offset_end);
                     const feature = await this.processor(subarr);
 
                     const is_first = offset === 0;
-                    const is_last = offset_end >= aud.length;
+                    const is_last = offset_end >= transcriptionAudio.length;
                     chunks.push({
                         stride: [subarr.length, is_first ? 0 : stride, is_last ? 0 : stride],
                         input_features: feature.input_features,
@@ -268,8 +288,8 @@ export class AutomaticSpeechRecognitionPipeline
             } else {
                 chunks = [
                     {
-                        stride: [aud.length, 0, 0],
-                        input_features: (await this.processor(aud)).input_features,
+                        stride: [transcriptionAudio.length, 0, 0],
+                        input_features: (await this.processor(transcriptionAudio)).input_features,
                         is_last: true,
                     },
                 ];
@@ -279,14 +299,15 @@ export class AutomaticSpeechRecognitionPipeline
             const timestamp_begin = this.tokenizer.timestamp_begin;
             if (hallucination_recovery) {
                 const processedChunks = [];
-                const chunkJump = chunk_length_s > 0
-                    ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6)
-                    : 0;
+                const chunkJump =
+                    chunk_length_s > 0
+                        ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6)
+                        : 0;
                 for (let ci = 0; ci < chunks.length; ++ci) {
                     const audioOffset = ci * chunkJump;
                     const result = await this._processChunkWithRetry(
                         chunks[ci],
-                        aud,
+                        transcriptionAudio,
                         generation_config,
                         return_timestamps,
                         timestamp_begin,
@@ -323,7 +344,7 @@ export class AutomaticSpeechRecognitionPipeline
                             .slice(prefixLength)
                             .map((/** @type {number} */ x) => round(x, 2));
                     } else {
-                        const sequences = data?.sequences ?? data;
+                        const sequences = /** @type {Tensor} */ (/** @type {any} */ (data)?.sequences ?? data);
                         chunk.tokens = /** @type {Tensor} */ (sequences)[0].tolist();
                     }
 
@@ -339,7 +360,15 @@ export class AutomaticSpeechRecognitionPipeline
                 force_full_sequences,
             });
 
-            toReturn.push({ text: full_text, ...optional });
+            const output = { text: full_text, ...optional };
+            if (vadResult.applied && return_timestamps) {
+                remapWhisperOutputTimestamps(output, vadResult.segments, vadResult.originalDurationS);
+            }
+            if (voice_activity_detection && vadResult.debugMetadata) {
+                output.voice_activity_detection = vadResult.debugMetadata;
+            }
+
+            toReturn.push(output);
         }
         return single ? toReturn[0] : toReturn;
     }
@@ -349,7 +378,17 @@ export class AutomaticSpeechRecognitionPipeline
      * and recursively splitting into smaller sub-chunks when needed.
      * @private
      */
-    async _processChunkWithRetry(chunk, fullAudio, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate, audioOffset = 0, depth = 0) {
+    async _processChunkWithRetry(
+        chunk,
+        fullAudio,
+        generation_config,
+        return_timestamps,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        audioOffset = 0,
+        depth = 0,
+    ) {
         const chunk_duration_s = chunk.stride[0] / sampling_rate;
         const logprob_threshold = generation_config.logprob_threshold ?? -1.0;
         const original = await this._generateChunkResult(
@@ -396,7 +435,14 @@ export class AutomaticSpeechRecognitionPipeline
         return this._chooseBetterChunkResult(original, padded);
     }
 
-    async _generateChunkResult(chunk, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate) {
+    async _generateChunkResult(
+        chunk,
+        generation_config,
+        return_timestamps,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+    ) {
         generation_config.num_frames = Math.floor(chunk.stride[0] / hop_length);
 
         const data = await this.model.generate({
@@ -420,18 +466,16 @@ export class AutomaticSpeechRecognitionPipeline
         };
 
         if (return_timestamps === 'word') {
-            // @ts-expect-error TS2339
             const sequences = data.sequences.tolist()[0];
-            // @ts-expect-error TS2339
             const token_ts = data.token_timestamps.tolist()[0];
             const prefixLength = Math.max(
                 sequences.findIndex((/** @type {bigint} */ t) => Number(t) >= timestamp_begin),
                 0,
             );
             outputChunk.tokens = sequences.slice(prefixLength);
-            outputChunk.token_timestamps = token_ts.slice(prefixLength).map((/** @type {number} */ x) =>
-                round(Math.max(0, x + timestamp_shift_s), 2),
-            );
+            outputChunk.token_timestamps = token_ts
+                .slice(prefixLength)
+                .map((/** @type {number} */ x) => round(Math.max(0, x + timestamp_shift_s), 2));
         } else {
             const sequences = data?.sequences ?? data;
             outputChunk.tokens = /** @type {Tensor} */ (sequences)[0].tolist();
@@ -446,7 +490,8 @@ export class AutomaticSpeechRecognitionPipeline
             text_token_count,
             avg_logprob: total_logprob !== null && text_token_count > 0 ? total_logprob / text_token_count : null,
             has_valid_timestamps:
-                outputChunk.token_timestamps === undefined || this._hasValidTokenTimestamps(outputChunk.token_timestamps),
+                outputChunk.token_timestamps === undefined ||
+                this._hasValidTokenTimestamps(outputChunk.token_timestamps),
         };
     }
 
@@ -536,8 +581,18 @@ export class AutomaticSpeechRecognitionPipeline
         };
     }
 
-    async _splitChunkWithRetry(chunk, fullAudio, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate, audioOffset, depth) {
-        const half_s = (chunk.stride[0] / sampling_rate) / 2;
+    async _splitChunkWithRetry(
+        chunk,
+        fullAudio,
+        generation_config,
+        return_timestamps,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        audioOffset,
+        depth,
+    ) {
+        const half_s = chunk.stride[0] / sampling_rate / 2;
         const sub_stride_s = Math.min(half_s / 6, 2);
         const sub_window = Math.round(sampling_rate * half_s);
         const sub_stride_samples = Math.round(sampling_rate * sub_stride_s);
@@ -586,7 +641,16 @@ export class AutomaticSpeechRecognitionPipeline
         return combined;
     }
 
-    async _generatePaddedChunkResult(chunk, fullAudio, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate, audioOffset) {
+    async _generatePaddedChunkResult(
+        chunk,
+        fullAudio,
+        generation_config,
+        return_timestamps,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        audioOffset,
+    ) {
         const silence_samples = Math.round(sampling_rate * 0.5);
         const padded_audio = new Float32Array(silence_samples + chunk.stride[0]);
         padded_audio.set(fullAudio.subarray(audioOffset, audioOffset + chunk.stride[0]), silence_samples);

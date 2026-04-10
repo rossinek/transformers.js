@@ -102,7 +102,7 @@ export class FFT {
     constructor(fft_length: any);
     fft_length: any;
     isPowerOfTwo: boolean;
-    fft: NP2FFT | P2FFT;
+    fft: P2FFT | NP2FFT;
     outputBufferSize: number;
     realTransform(out: any, input: any): void;
     transform(out: any, input: any): void;
@@ -111,31 +111,6 @@ export function uint16_to_float32(u16Array: Uint16Array): Float32Array<ArrayBuff
 export type TypedArray = Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | Float16Array | Float32Array | Float64Array;
 export type BigTypedArray = BigInt64Array | BigUint64Array;
 export type AnyTypedArray = TypedArray | BigTypedArray;
-/**
- * NP2FFT class provides functionality for performing Fast Fourier Transform on arrays
- * which are not a power of two in length. In such cases, the chirp-z transform is used.
- *
- * For more information, see: https://math.stackexchange.com/questions/77118/non-power-of-2-ffts/77156#77156
- */
-declare class NP2FFT {
-    /**
-     * Constructs a new NP2FFT object.
-     * @param {number} fft_length The length of the FFT
-     */
-    constructor(fft_length: number);
-    bufferSize: number;
-    _a: number;
-    _chirpBuffer: Float64Array<ArrayBuffer>;
-    _buffer1: Float64Array<ArrayBuffer>;
-    _buffer2: Float64Array<ArrayBuffer>;
-    _outBuffer1: Float64Array<ArrayBuffer>;
-    _outBuffer2: Float64Array<ArrayBuffer>;
-    _slicedChirpBuffer: Float64Array<ArrayBuffer>;
-    _f: P2FFT;
-    _transform(output: any, input: any, real: any): void;
-    transform(output: any, input: any): void;
-    realTransform(output: any, input: any): void;
-}
 /**
  * Implementation of Radix-4 FFT.
  *
@@ -272,6 +247,31 @@ declare class P2FFT {
      * @param {number} inv The value of inverse.
      */
     _singleRealTransform4(data: Float64Array, out: Float64Array, outOff: number, off: number, step: number, inv: number): void;
+}
+/**
+ * NP2FFT class provides functionality for performing Fast Fourier Transform on arrays
+ * which are not a power of two in length. In such cases, the chirp-z transform is used.
+ *
+ * For more information, see: https://math.stackexchange.com/questions/77118/non-power-of-2-ffts/77156#77156
+ */
+declare class NP2FFT {
+    /**
+     * Constructs a new NP2FFT object.
+     * @param {number} fft_length The length of the FFT
+     */
+    constructor(fft_length: number);
+    bufferSize: number;
+    _a: number;
+    _chirpBuffer: Float64Array<ArrayBuffer>;
+    _buffer1: Float64Array<ArrayBuffer>;
+    _buffer2: Float64Array<ArrayBuffer>;
+    _outBuffer1: Float64Array<ArrayBuffer>;
+    _outBuffer2: Float64Array<ArrayBuffer>;
+    _slicedChirpBuffer: Float64Array<ArrayBuffer>;
+    _f: P2FFT;
+    _transform(output: any, input: any, real: any): void;
+    transform(output: any, input: any): void;
+    realTransform(output: any, input: any): void;
 }
 export {};
 //# sourceMappingURL=maths.d.ts.map

@@ -24,6 +24,8 @@ declare const AutomaticSpeechRecognitionPipeline_base: new (options: TextAudioPi
  * @property {string} [language] The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
  * @property {string} [task] The task to perform. Default is `null`, meaning it should be auto-detected.
  * @property {number} [num_frames] The number of frames in the input audio.
+ * @property {boolean|{provider?: 'vad-web', pre_speech_pad_ms?: number, post_speech_pad_ms?: number, min_speech_ms?: number, min_silence_ms?: number, max_merge_gap_ms?: number, preserve_full_audio_if_empty?: boolean, debug?: boolean}} [voice_activity_detection]
+ * Optional browser-side voice activity detection preprocessing. Disabled by default.
  * @typedef {import('../generation/parameters.js').GenerationFunctionParameters & AutomaticSpeechRecognitionSpecificParams} AutomaticSpeechRecognitionConfig
  *
  * @callback AutomaticSpeechRecognitionPipelineCallbackSingle Transcribe the audio sequence given as inputs to text.
@@ -268,6 +270,19 @@ export type AutomaticSpeechRecognitionSpecificParams = {
      * The number of frames in the input audio.
      */
     num_frames?: number;
+    /**
+     * Optional browser-side voice activity detection preprocessing. Disabled by default.
+     */
+    voice_activity_detection?: boolean | {
+        provider?: "vad-web";
+        pre_speech_pad_ms?: number;
+        post_speech_pad_ms?: number;
+        min_speech_ms?: number;
+        min_silence_ms?: number;
+        max_merge_gap_ms?: number;
+        preserve_full_audio_if_empty?: boolean;
+        debug?: boolean;
+    };
 };
 export type AutomaticSpeechRecognitionConfig = import("../generation/parameters.js").GenerationFunctionParameters & AutomaticSpeechRecognitionSpecificParams;
 /**

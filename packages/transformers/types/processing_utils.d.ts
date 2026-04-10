@@ -62,12 +62,12 @@ export class Processor extends Processor_base {
      * @param {Parameters<PreTrainedTokenizer['batch_decode']>} args
      * @returns {ReturnType<PreTrainedTokenizer['batch_decode']>}
      */
-    batch_decode(batch: import("./transformers.js").Tensor | number[][], decode_args?: any): ReturnType<PreTrainedTokenizer["batch_decode"]>;
+    batch_decode(batch: number[][] | import("./transformers.js").Tensor, decode_args?: any): ReturnType<PreTrainedTokenizer["batch_decode"]>;
     /**
      * @param {Parameters<PreTrainedTokenizer['decode']>} args
      * @returns {ReturnType<PreTrainedTokenizer['decode']>}
      */
-    decode(token_ids: import("./transformers.js").Tensor | number[] | bigint[], decode_args?: {
+    decode(token_ids: number[] | bigint[] | import("./transformers.js").Tensor, decode_args?: {
         skip_special_tokens?: boolean;
         clean_up_tokenization_spaces?: boolean;
     }): ReturnType<PreTrainedTokenizer["decode"]>;

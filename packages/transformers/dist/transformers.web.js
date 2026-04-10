@@ -1,8 +1,1164 @@
+var __create = Object.create;
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+var __commonJS = (cb, mod) => function __require2() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/asset-path.js
+var require_asset_path = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/asset-path.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.baseAssetPath = void 0;
+    var isWeb = typeof window !== "undefined" && typeof window.document !== "undefined";
+    var currentScript = isWeb ? window.document.currentScript : null;
+    var basePath = "/";
+    if (currentScript) {
+      basePath = currentScript.src.replace(/#.*$/, "").replace(/\?.*$/, "").replace(/\/[^/]+$/, "/");
+    }
+    exports.baseAssetPath = basePath;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/default-model-fetcher.js
+var require_default_model_fetcher = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/default-model-fetcher.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.defaultModelFetcher = void 0;
+    var defaultModelFetcher = (path) => {
+      return fetch(path).then((model) => model.arrayBuffer());
+    };
+    exports.defaultModelFetcher = defaultModelFetcher;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/logging.js
+var require_logging = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/logging.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.log = void 0;
+    var mkLogger = (level) => (message) => {
+      console.log(`VAD | ${level} >`, message);
+    };
+    exports.log = {
+      error: mkLogger("error"),
+      debug: mkLogger("debug"),
+      warn: mkLogger("warn")
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/messages.js
+var require_messages = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/messages.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.Message = void 0;
+    var Message;
+    (function(Message2) {
+      Message2["AudioFrame"] = "AUDIO_FRAME";
+      Message2["SpeechStart"] = "SPEECH_START";
+      Message2["VADMisfire"] = "VAD_MISFIRE";
+      Message2["SpeechEnd"] = "SPEECH_END";
+      Message2["SpeechStop"] = "SPEECH_STOP";
+      Message2["SpeechRealStart"] = "SPEECH_REAL_START";
+      Message2["FrameProcessed"] = "FRAME_PROCESSED";
+    })(Message || (exports.Message = Message = {}));
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/frame-processor.js
+var require_frame_processor = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/frame-processor.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.FrameProcessor = exports.validateOptions = exports.defaultFrameProcessorOptions = void 0;
+    var logging_1 = require_logging();
+    var messages_1 = require_messages();
+    exports.defaultFrameProcessorOptions = {
+      positiveSpeechThreshold: 0.3,
+      negativeSpeechThreshold: 0.25,
+      preSpeechPadMs: 800,
+      redemptionMs: 1400,
+      minSpeechMs: 400,
+      submitUserSpeechOnPause: false
+    };
+    function validateOptions(options) {
+      if (options.positiveSpeechThreshold < 0 || options.positiveSpeechThreshold > 1) {
+        logging_1.log.error("positiveSpeechThreshold should be a number between 0 and 1");
+      }
+      if (options.negativeSpeechThreshold < 0 || options.negativeSpeechThreshold > options.positiveSpeechThreshold) {
+        logging_1.log.error("negativeSpeechThreshold should be between 0 and positiveSpeechThreshold");
+      }
+      if (options.preSpeechPadMs < 0) {
+        logging_1.log.error("preSpeechPadMs should be positive");
+      }
+      if (options.redemptionMs < 0) {
+        logging_1.log.error("redemptionMs should be positive");
+      }
+      if (options.minSpeechMs < 0) {
+        logging_1.log.error("minSpeechMs should be positive");
+      }
+    }
+    exports.validateOptions = validateOptions;
+    var concatArrays = (arrays) => {
+      const sizes = arrays.reduce((out, next) => {
+        out.push(out.at(-1) + next.length);
+        return out;
+      }, [0]);
+      const outArray = new Float32Array(sizes.at(-1));
+      arrays.forEach((arr, index) => {
+        const place = sizes[index];
+        outArray.set(arr, place);
+      });
+      return outArray;
+    };
+    function calculateFrameParams(options, msPerFrame) {
+      const redemptionFrames = Math.floor(options.redemptionMs / msPerFrame);
+      const preSpeechPadFrames = Math.floor(options.preSpeechPadMs / msPerFrame);
+      const minSpeechFrames = Math.floor(options.minSpeechMs / msPerFrame);
+      return { redemptionFrames, preSpeechPadFrames, minSpeechFrames };
+    }
+    var FrameProcessor = class {
+      constructor(modelProcessFunc, modelResetFunc, options, msPerFrame) {
+        this.modelProcessFunc = modelProcessFunc;
+        this.modelResetFunc = modelResetFunc;
+        this.options = options;
+        this.msPerFrame = msPerFrame;
+        this.speaking = false;
+        this.redemptionCounter = 0;
+        this.speechFrameCount = 0;
+        this.active = false;
+        this.speechRealStartFired = false;
+        this.setOptions = (update) => {
+          this.options = { ...this.options, ...update };
+          const { redemptionFrames: redemptionFrames2, preSpeechPadFrames: preSpeechPadFrames2, minSpeechFrames: minSpeechFrames2 } = calculateFrameParams(this.options, this.msPerFrame);
+          this.redemptionFrames = redemptionFrames2;
+          this.preSpeechPadFrames = preSpeechPadFrames2;
+          this.minSpeechFrames = minSpeechFrames2;
+        };
+        this.reset = () => {
+          this.speaking = false;
+          this.speechRealStartFired = false;
+          this.audioBuffer = [];
+          this.modelResetFunc();
+          this.redemptionCounter = 0;
+          this.speechFrameCount = 0;
+        };
+        this.pause = (handleEvent) => {
+          this.active = false;
+          if (this.options.submitUserSpeechOnPause) {
+            this.endSegment(handleEvent);
+          } else {
+            this.reset();
+          }
+        };
+        this.resume = () => {
+          this.active = true;
+        };
+        this.endSegment = (handleEvent) => {
+          const audioBuffer = this.audioBuffer;
+          this.audioBuffer = [];
+          const speaking = this.speaking;
+          this.reset();
+          if (speaking) {
+            const speechFrameCount = audioBuffer.reduce((acc, item) => {
+              return item.isSpeech ? acc + 1 : acc;
+            }, 0);
+            if (speechFrameCount >= this.minSpeechFrames) {
+              const audio = concatArrays(audioBuffer.map((item) => item.frame));
+              handleEvent({ msg: messages_1.Message.SpeechEnd, audio });
+            } else {
+              handleEvent({ msg: messages_1.Message.VADMisfire });
+            }
+          }
+          return {};
+        };
+        this.process = async (frame, handleEvent) => {
+          if (!this.active) {
+            return;
+          }
+          const probs = await this.modelProcessFunc(frame);
+          const isSpeech = probs.isSpeech >= this.options.positiveSpeechThreshold;
+          handleEvent({ probs, msg: messages_1.Message.FrameProcessed, frame });
+          this.audioBuffer.push({
+            frame,
+            isSpeech
+          });
+          if (isSpeech) {
+            this.speechFrameCount++;
+            this.redemptionCounter = 0;
+          }
+          if (isSpeech && !this.speaking) {
+            this.speaking = true;
+            handleEvent({ msg: messages_1.Message.SpeechStart });
+          }
+          if (this.speaking && this.speechFrameCount === this.minSpeechFrames && !this.speechRealStartFired) {
+            this.speechRealStartFired = true;
+            handleEvent({ msg: messages_1.Message.SpeechRealStart });
+          }
+          if (probs.isSpeech < this.options.negativeSpeechThreshold && this.speaking && ++this.redemptionCounter >= this.redemptionFrames) {
+            this.redemptionCounter = 0;
+            this.speechFrameCount = 0;
+            this.speaking = false;
+            this.speechRealStartFired = false;
+            const audioBuffer = this.audioBuffer;
+            this.audioBuffer = [];
+            const speechFrameCount = audioBuffer.reduce((acc, item) => {
+              return item.isSpeech ? acc + 1 : acc;
+            }, 0);
+            if (speechFrameCount >= this.minSpeechFrames) {
+              const audio = concatArrays(audioBuffer.map((item) => item.frame));
+              handleEvent({ msg: messages_1.Message.SpeechEnd, audio });
+            } else {
+              handleEvent({ msg: messages_1.Message.VADMisfire });
+            }
+          }
+          if (!this.speaking) {
+            while (this.audioBuffer.length > this.preSpeechPadFrames) {
+              this.audioBuffer.shift();
+            }
+            this.speechFrameCount = 0;
+          }
+        };
+        this.audioBuffer = [];
+        const { redemptionFrames, preSpeechPadFrames, minSpeechFrames } = calculateFrameParams(this.options, this.msPerFrame);
+        this.redemptionFrames = redemptionFrames;
+        this.preSpeechPadFrames = preSpeechPadFrames;
+        this.minSpeechFrames = minSpeechFrames;
+        this.reset();
+      }
+    };
+    exports.FrameProcessor = FrameProcessor;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/common.js
+var require_common = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/common.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/legacy.js
+var require_legacy = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/legacy.js"(exports) {
+    "use strict";
+    var _a;
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.SileroLegacy = void 0;
+    var logging_1 = require_logging();
+    var SileroLegacy = class {
+      constructor(ortInstance, _session, _h, _c, _sr) {
+        this.ortInstance = ortInstance;
+        this._session = _session;
+        this._h = _h;
+        this._c = _c;
+        this._sr = _sr;
+        this.reset_state = () => {
+          const zeroes = Array(2 * 64).fill(0);
+          this._h = new this.ortInstance.Tensor("float32", zeroes, [2, 1, 64]);
+          this._c = new this.ortInstance.Tensor("float32", zeroes, [2, 1, 64]);
+        };
+        this.process = async (audioFrame) => {
+          const t = new this.ortInstance.Tensor("float32", audioFrame, [
+            1,
+            audioFrame.length
+          ]);
+          const inputs = {
+            input: t,
+            h: this._h,
+            c: this._c,
+            sr: this._sr
+          };
+          const out = await this._session.run(inputs);
+          this._h = out["hn"];
+          this._c = out["cn"];
+          const [isSpeech] = out["output"]?.data;
+          const notSpeech = 1 - isSpeech;
+          return { notSpeech, isSpeech };
+        };
+        this.release = async () => {
+          await this._session.release();
+          this._h.dispose();
+          this._c.dispose();
+          this._sr.dispose();
+        };
+      }
+    };
+    exports.SileroLegacy = SileroLegacy;
+    _a = SileroLegacy;
+    SileroLegacy.new = async (ortInstance, modelFetcher) => {
+      logging_1.log.debug("initializing vad");
+      const modelArrayBuffer = await modelFetcher();
+      const _session = await ortInstance.InferenceSession.create(modelArrayBuffer);
+      const _sr = new ortInstance.Tensor("int64", [16000n]);
+      const zeroes = Array(2 * 64).fill(0);
+      const _h = new ortInstance.Tensor("float32", zeroes, [2, 1, 64]);
+      const _c = new ortInstance.Tensor("float32", zeroes, [2, 1, 64]);
+      logging_1.log.debug("vad is initialized");
+      const model = new _a(ortInstance, _session, _h, _c, _sr);
+      return model;
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/v5.js
+var require_v5 = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/v5.js"(exports) {
+    "use strict";
+    var _a;
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.SileroV5 = void 0;
+    var logging_1 = require_logging();
+    function getNewState(ortInstance) {
+      const zeroes = Array(2 * 128).fill(0);
+      return new ortInstance.Tensor("float32", zeroes, [2, 1, 128]);
+    }
+    var SileroV5 = class {
+      constructor(_session, _state, _sr, ortInstance) {
+        this._session = _session;
+        this._state = _state;
+        this._sr = _sr;
+        this.ortInstance = ortInstance;
+        this.reset_state = () => {
+          this._state = getNewState(this.ortInstance);
+        };
+        this.process = async (audioFrame) => {
+          const t = new this.ortInstance.Tensor("float32", audioFrame, [
+            1,
+            audioFrame.length
+          ]);
+          const inputs = {
+            input: t,
+            state: this._state,
+            sr: this._sr
+          };
+          const out = await this._session.run(inputs);
+          if (!out["stateN"]) {
+            throw new Error("No state from model");
+          }
+          this._state = out["stateN"];
+          if (!out["output"]?.data) {
+            throw new Error("No output from model");
+          }
+          const isSpeech = out["output"].data[0];
+          if (typeof isSpeech != "number") {
+            throw new Error("Weird output data");
+          }
+          const notSpeech = 1 - isSpeech;
+          return { notSpeech, isSpeech };
+        };
+        this.release = async () => {
+          await this._session.release();
+          this._state.dispose();
+          this._sr.dispose();
+        };
+      }
+    };
+    exports.SileroV5 = SileroV5;
+    _a = SileroV5;
+    SileroV5.new = async (ortInstance, modelFetcher) => {
+      logging_1.log.debug("Loading VAD...");
+      const modelArrayBuffer = await modelFetcher();
+      const _session = await ortInstance.InferenceSession.create(modelArrayBuffer);
+      const _sr = new ortInstance.Tensor("int64", [16000n]);
+      const _state = getNewState(ortInstance);
+      logging_1.log.debug("...finished loading VAD");
+      return new _a(_session, _state, _sr, ortInstance);
+    };
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/index.js
+var require_models = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/models/index.js"(exports) {
+    "use strict";
+    var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      o[k2] = m[k];
+    }));
+    var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+      for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p)) __createBinding(exports2, m, p);
+    };
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.SileroV5 = exports.SileroLegacy = void 0;
+    __exportStar(require_common(), exports);
+    var legacy_1 = require_legacy();
+    Object.defineProperty(exports, "SileroLegacy", { enumerable: true, get: function() {
+      return legacy_1.SileroLegacy;
+    } });
+    var v5_1 = require_v5();
+    Object.defineProperty(exports, "SileroV5", { enumerable: true, get: function() {
+      return v5_1.SileroV5;
+    } });
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/resampler.js
+var require_resampler = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/resampler.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.Resampler = void 0;
+    var logging_1 = require_logging();
+    var Resampler = class {
+      constructor(options) {
+        this.options = options;
+        this.process = (audioFrame) => {
+          const outputFrames = [];
+          for (const sample of audioFrame) {
+            this.inputBuffer.push(sample);
+            while (this.hasEnoughDataForFrame()) {
+              const outputFrame = this.generateOutputFrame();
+              outputFrames.push(outputFrame);
+            }
+          }
+          return outputFrames;
+        };
+        if (options.nativeSampleRate < 16e3) {
+          logging_1.log.error("nativeSampleRate is too low. Should have 16000 = targetSampleRate <= nativeSampleRate");
+        }
+        this.inputBuffer = [];
+      }
+      async *stream(audioInput) {
+        for (const sample of audioInput) {
+          this.inputBuffer.push(sample);
+          while (this.hasEnoughDataForFrame()) {
+            const outputFrame = this.generateOutputFrame();
+            yield outputFrame;
+          }
+        }
+      }
+      hasEnoughDataForFrame() {
+        return this.inputBuffer.length * this.options.targetSampleRate / this.options.nativeSampleRate >= this.options.targetFrameSize;
+      }
+      generateOutputFrame() {
+        const outputFrame = new Float32Array(this.options.targetFrameSize);
+        let outputIndex = 0;
+        let inputIndex = 0;
+        while (outputIndex < this.options.targetFrameSize) {
+          let sum = 0;
+          let num = 0;
+          while (inputIndex < Math.min(this.inputBuffer.length, (outputIndex + 1) * this.options.nativeSampleRate / this.options.targetSampleRate)) {
+            const value = this.inputBuffer[inputIndex];
+            if (value !== void 0) {
+              sum += value;
+              num++;
+            }
+            inputIndex++;
+          }
+          outputFrame[outputIndex] = sum / num;
+          outputIndex++;
+        }
+        this.inputBuffer = this.inputBuffer.slice(inputIndex);
+        return outputFrame;
+      }
+    };
+    exports.Resampler = Resampler;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/non-real-time-vad.js
+var require_non_real_time_vad = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/non-real-time-vad.js"(exports) {
+    "use strict";
+    var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      o[k2] = m[k];
+    }));
+    var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? (function(o, v) {
+      Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+      o["default"] = v;
+    });
+    var __importStar = exports && exports.__importStar || function(mod) {
+      if (mod && mod.__esModule) return mod;
+      var result = {};
+      if (mod != null) {
+        for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+      }
+      __setModuleDefault(result, mod);
+      return result;
+    };
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.NonRealTimeVAD = exports.defaultNonRealTimeVADOptions = void 0;
+    var ortInstance = __importStar(__require("onnxruntime-web"));
+    var asset_path_1 = require_asset_path();
+    var default_model_fetcher_1 = require_default_model_fetcher();
+    var frame_processor_1 = require_frame_processor();
+    var messages_1 = require_messages();
+    var models_1 = require_models();
+    var resampler_1 = require_resampler();
+    exports.defaultNonRealTimeVADOptions = {
+      ...frame_processor_1.defaultFrameProcessorOptions,
+      modelURL: asset_path_1.baseAssetPath + "silero_vad_legacy.onnx",
+      modelFetcher: default_model_fetcher_1.defaultModelFetcher
+    };
+    var NonRealTimeVAD = class {
+      static async new(options = {}) {
+        const fullOptions = {
+          ...exports.defaultNonRealTimeVADOptions,
+          ...options
+        };
+        (0, frame_processor_1.validateOptions)(fullOptions);
+        if (fullOptions.ortConfig !== void 0) {
+          fullOptions.ortConfig(ortInstance);
+        }
+        const modelFetcher = () => fullOptions.modelFetcher(fullOptions.modelURL);
+        const model = await models_1.SileroLegacy.new(ortInstance, modelFetcher);
+        const frameProcessor = new frame_processor_1.FrameProcessor(model.process, model.reset_state, {
+          positiveSpeechThreshold: fullOptions.positiveSpeechThreshold,
+          negativeSpeechThreshold: fullOptions.negativeSpeechThreshold,
+          redemptionMs: fullOptions.redemptionMs,
+          preSpeechPadMs: fullOptions.preSpeechPadMs,
+          minSpeechMs: fullOptions.minSpeechMs,
+          submitUserSpeechOnPause: fullOptions.submitUserSpeechOnPause
+        }, 1536 / 16);
+        frameProcessor.resume();
+        const vad = new this(modelFetcher, ortInstance, fullOptions, frameProcessor);
+        return vad;
+      }
+      constructor(modelFetcher, ort, options, frameProcessor) {
+        this.modelFetcher = modelFetcher;
+        this.ort = ort;
+        this.options = options;
+        this.frameProcessor = frameProcessor;
+        this.frameSamples = 1536;
+      }
+      async *run(inputAudio, sampleRate) {
+        const resamplerOptions = {
+          nativeSampleRate: sampleRate,
+          targetSampleRate: 16e3,
+          targetFrameSize: this.frameSamples
+        };
+        const resampler = new resampler_1.Resampler(resamplerOptions);
+        let start = 0;
+        let end = 0;
+        let frameIndex = 0;
+        for await (const frame of resampler.stream(inputAudio)) {
+          const messageContainer2 = [];
+          await this.frameProcessor.process(frame, (event) => {
+            messageContainer2.push(event);
+          });
+          for (const event of messageContainer2) {
+            switch (event.msg) {
+              case messages_1.Message.SpeechStart:
+                start = frameIndex * this.frameSamples / 16;
+                break;
+              case messages_1.Message.SpeechEnd:
+                end = (frameIndex + 1) * this.frameSamples / 16;
+                yield { audio: event.audio, start, end };
+                break;
+              default:
+                break;
+            }
+          }
+          frameIndex++;
+        }
+        const messageContainer = [];
+        this.frameProcessor.endSegment((event) => {
+          messageContainer.push(event);
+        });
+        for (const event of messageContainer) {
+          switch (event.msg) {
+            case messages_1.Message.SpeechEnd:
+              yield {
+                audio: event.audio,
+                start,
+                end: frameIndex * this.frameSamples / 16
+              };
+          }
+        }
+      }
+    };
+    exports.NonRealTimeVAD = NonRealTimeVAD;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/utils.js
+var require_utils = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/utils.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.audioFileToArray = exports.encodeWAV = exports.arrayBufferToBase64 = exports.minFramesForTargetMS = void 0;
+    function minFramesForTargetMS(targetDuration, frameSamples, sr = 16e3) {
+      return Math.ceil(targetDuration * sr / 1e3 / frameSamples);
+    }
+    exports.minFramesForTargetMS = minFramesForTargetMS;
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const len2 = bytes.byteLength;
+      const binary = new Array(len2);
+      for (let i = 0; i < len2; i++) {
+        const byte = bytes[i];
+        if (byte === void 0) {
+          break;
+        }
+        binary[i] = String.fromCharCode(byte);
+      }
+      return btoa(binary.join(""));
+    }
+    exports.arrayBufferToBase64 = arrayBufferToBase64;
+    function encodeWAV2(samples, format2 = 3, sampleRate = 16e3, numChannels = 1, bitDepth = 32) {
+      const bytesPerSample = bitDepth / 8;
+      const blockAlign = numChannels * bytesPerSample;
+      const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
+      const view = new DataView(buffer);
+      writeString2(view, 0, "RIFF");
+      view.setUint32(4, 36 + samples.length * bytesPerSample, true);
+      writeString2(view, 8, "WAVE");
+      writeString2(view, 12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, format2, true);
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * blockAlign, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitDepth, true);
+      writeString2(view, 36, "data");
+      view.setUint32(40, samples.length * bytesPerSample, true);
+      if (format2 === 1) {
+        floatTo16BitPCM(view, 44, samples);
+      } else {
+        writeFloat32(view, 44, samples);
+      }
+      return buffer;
+    }
+    exports.encodeWAV = encodeWAV2;
+    function writeFloat32(output, offset, input) {
+      for (let i = 0; i < input.length; i++, offset += 4) {
+        output.setFloat32(offset, input[i], true);
+      }
+    }
+    function floatTo16BitPCM(output, offset, input) {
+      for (let i = 0; i < input.length; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        output.setInt16(offset, s < 0 ? s * 32768 : s * 32767, true);
+      }
+    }
+    function writeString2(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+    async function audioFileToArray(audioFileData) {
+      const ctx = new OfflineAudioContext(1, 1, 44100);
+      const reader = new FileReader();
+      let audioBuffer = null;
+      await new Promise((res) => {
+        reader.addEventListener("loadend", () => {
+          const audioData = reader.result;
+          void ctx.decodeAudioData(audioData, (buffer) => {
+            audioBuffer = buffer;
+            ctx.startRendering().then(() => {
+              console.log("Rendering completed successfully");
+              res();
+            }).catch((err) => {
+              console.error("Rendering failed: ", err);
+            });
+          }, (e) => {
+            console.log("Error with decoding audio data: ", e);
+          });
+        });
+        reader.readAsArrayBuffer(audioFileData);
+      });
+      if (audioBuffer === null) {
+        throw Error("some shit");
+      }
+      const _audioBuffer = audioBuffer;
+      const out = new Float32Array(_audioBuffer.length);
+      for (let i = 0; i < _audioBuffer.length; i++) {
+        for (let j = 0; j < _audioBuffer.numberOfChannels; j++) {
+          const sample = _audioBuffer.getChannelData(j)[i];
+          const current = out[i];
+          if (sample === void 0 || current === void 0) {
+            throw new Error("sample or out[i] is undefined");
+          }
+          out[i] = current + sample;
+        }
+      }
+      return { audio: out, sampleRate: _audioBuffer.sampleRate };
+    }
+    exports.audioFileToArray = audioFileToArray;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/real-time-vad.js
+var require_real_time_vad = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/real-time-vad.js"(exports) {
+    "use strict";
+    var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      o[k2] = m[k];
+    }));
+    var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? (function(o, v) {
+      Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+      o["default"] = v;
+    });
+    var __importStar = exports && exports.__importStar || function(mod) {
+      if (mod && mod.__esModule) return mod;
+      var result = {};
+      if (mod != null) {
+        for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+      }
+      __setModuleDefault(result, mod);
+      return result;
+    };
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.MicVAD = exports.getDefaultRealTimeVADOptions = exports.ort = exports.DEFAULT_MODEL = void 0;
+    var ortInstance = __importStar(__require("onnxruntime-web/wasm"));
+    var default_model_fetcher_1 = require_default_model_fetcher();
+    var frame_processor_1 = require_frame_processor();
+    var logging_1 = require_logging();
+    var messages_1 = require_messages();
+    var models_1 = require_models();
+    var resampler_1 = require_resampler();
+    exports.DEFAULT_MODEL = "legacy";
+    exports.ort = ortInstance;
+    var workletFile = "vad.worklet.bundle.min.js";
+    var sileroV5File = "silero_vad_v5.onnx";
+    var sileroLegacyFile = "silero_vad_legacy.onnx";
+    var getDefaultRealTimeVADOptions = (model) => {
+      return {
+        ...frame_processor_1.defaultFrameProcessorOptions,
+        onFrameProcessed: () => {
+        },
+        onVADMisfire: () => {
+          logging_1.log.debug("VAD misfire");
+        },
+        onSpeechStart: () => {
+          logging_1.log.debug("Detected speech start");
+        },
+        onSpeechEnd: () => {
+          logging_1.log.debug("Detected speech end");
+        },
+        onSpeechRealStart: () => {
+          logging_1.log.debug("Detected real speech start");
+        },
+        baseAssetPath: "./",
+        onnxWASMBasePath: "./",
+        model,
+        workletOptions: {},
+        getStream: async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              echoCancellation: true,
+              autoGainControl: true,
+              noiseSuppression: true
+            }
+          });
+          return stream;
+        },
+        pauseStream: async (_stream) => {
+          _stream.getTracks().forEach((track) => {
+            track.stop();
+          });
+        },
+        resumeStream: async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              echoCancellation: true,
+              autoGainControl: true,
+              noiseSuppression: true
+            }
+          });
+          return stream;
+        },
+        ortConfig: (ort) => {
+          ort.env.logLevel = "error";
+        },
+        startOnLoad: true,
+        processorType: "auto"
+      };
+    };
+    exports.getDefaultRealTimeVADOptions = getDefaultRealTimeVADOptions;
+    var detectProcessorType = (ctx) => {
+      if ("audioWorklet" in ctx && typeof AudioWorkletNode === "function") {
+        return "AudioWorklet";
+      }
+      return "ScriptProcessor";
+    };
+    async function getVADNodeAsWorklet(workletURL, workletOptions, audioContext, frameSamples, processFrame) {
+      await audioContext.audioWorklet.addModule(workletURL);
+      workletOptions.processorOptions = {
+        ...workletOptions.processorOptions ?? {},
+        frameSamples
+      };
+      const audioNode = new AudioWorkletNode(audioContext, "vad-helper-worklet", workletOptions);
+      audioNode.port.onmessage = async (ev) => {
+        const data = ev.data;
+        if (!(typeof data === "object" && data && "message" in data)) {
+          console.error("Invalid message event", data);
+          return;
+        }
+        switch (data.message) {
+          case messages_1.Message.AudioFrame: {
+            if (!("data" in data && data.data instanceof ArrayBuffer)) {
+              console.log("Audio frame message has no data");
+              return;
+            }
+            const frame = new Float32Array(data.data);
+            await processFrame(frame);
+            break;
+          }
+        }
+      };
+      return audioNode;
+    }
+    async function getVADNodeAsScriptProcessor(audioContext, frameSamples, processFrame) {
+      const resampler = new resampler_1.Resampler({
+        nativeSampleRate: audioContext.sampleRate,
+        targetSampleRate: 16e3,
+        targetFrameSize: frameSamples
+      });
+      logging_1.log.debug("using script processor");
+      const bufferSize = 4096;
+      const audioNode = audioContext.createScriptProcessor(bufferSize, 1, 1);
+      let processingAudio = false;
+      audioNode.onaudioprocess = async (e) => {
+        if (processingAudio)
+          return;
+        processingAudio = true;
+        try {
+          const input = e.inputBuffer.getChannelData(0);
+          const output = e.outputBuffer.getChannelData(0);
+          output.fill(0);
+          const frames = resampler.process(input);
+          for (const frame of frames) {
+            await processFrame(frame);
+          }
+        } catch (error) {
+          console.error("Error processing audio:", error);
+        } finally {
+          processingAudio = false;
+        }
+      };
+      audioNode.connect(audioContext.destination);
+      return audioNode;
+    }
+    var MicVAD = class _MicVAD {
+      constructor(options, frameProcessor, model, frameSamples, listening = false, errored = null, _stream = null, _audioContext = null, _vadNode = null, _mediaStreamAudioSourceNode = null, _audioProcessorAdapterType = null, initializationState = "uninitialized", ownsAudioContext = false) {
+        this.options = options;
+        this.frameProcessor = frameProcessor;
+        this.model = model;
+        this.frameSamples = frameSamples;
+        this.listening = listening;
+        this.errored = errored;
+        this._stream = _stream;
+        this._audioContext = _audioContext;
+        this._vadNode = _vadNode;
+        this._mediaStreamAudioSourceNode = _mediaStreamAudioSourceNode;
+        this._audioProcessorAdapterType = _audioProcessorAdapterType;
+        this.initializationState = initializationState;
+        this.ownsAudioContext = ownsAudioContext;
+        this.getAudioInstances = () => {
+          if (this._stream === null || this._audioContext === null || this._vadNode == null || this._mediaStreamAudioSourceNode == null) {
+            throw new Error("MicVAD has null stream, audio context, or processor adapter");
+          }
+          return {
+            stream: this._stream,
+            audioContext: this._audioContext,
+            vadNode: this._vadNode,
+            mediaStreamAudioSourceNode: this._mediaStreamAudioSourceNode
+          };
+        };
+        this.setErrored = (error) => {
+          this.initializationState = "errored";
+          this.errored = error;
+        };
+        this.start = async () => {
+          switch (this.initializationState) {
+            case "uninitialized": {
+              logging_1.log.debug("initializing micVAD");
+              this.initializationState = "initializing";
+              this.frameProcessor.resume();
+              try {
+                this._stream = await this.options.getStream();
+              } catch (error) {
+                if (error instanceof Error) {
+                  this.setErrored(error.message);
+                } else {
+                  this.setErrored(String(error));
+                }
+                throw error;
+              }
+              if (this.options.audioContext) {
+                console.log("using custom audio context");
+                this._audioContext = this.options.audioContext;
+              } else {
+                console.log("using default audio context");
+                this._audioContext = new AudioContext();
+                this.ownsAudioContext = true;
+              }
+              if (!this._audioContext) {
+                this.setErrored("Audio context is null");
+                throw Error("Audio context is null");
+              }
+              this._audioProcessorAdapterType = this.options.processorType == "auto" ? detectProcessorType(this._audioContext) : this.options.processorType;
+              switch (this._audioProcessorAdapterType) {
+                case "AudioWorklet":
+                  {
+                    this._vadNode = await getVADNodeAsWorklet(this.options.baseAssetPath + workletFile, this.options.workletOptions, this._audioContext, this.frameSamples, this.processFrame);
+                  }
+                  break;
+                case "ScriptProcessor":
+                  {
+                    this._vadNode = await getVADNodeAsScriptProcessor(this._audioContext, this.frameSamples, this.processFrame);
+                  }
+                  break;
+                default: {
+                  throw new Error(
+                    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                    `Unsupported audio processor adapter type: ${this._audioProcessorAdapterType}`
+                  );
+                }
+              }
+              this._mediaStreamAudioSourceNode = new MediaStreamAudioSourceNode(this._audioContext, {
+                mediaStream: this._stream
+              });
+              this._mediaStreamAudioSourceNode.connect(this._vadNode);
+              logging_1.log.debug("started micVAD");
+              this.listening = true;
+              this.initializationState = "initialized";
+              break;
+            }
+            case "initializing": {
+              logging_1.log.warn("start called while initializing");
+              break;
+            }
+            case "initialized": {
+              if (this.listening) {
+                return;
+              }
+              this.listening = true;
+              this.frameProcessor.resume();
+              const { stream, audioContext, vadNode } = this.getAudioInstances();
+              this._stream = await this.options.resumeStream(stream);
+              const mediaStreamAudioSourceNode = new MediaStreamAudioSourceNode(audioContext, { mediaStream: this._stream });
+              this._mediaStreamAudioSourceNode = mediaStreamAudioSourceNode;
+              mediaStreamAudioSourceNode.connect(vadNode);
+              break;
+            }
+            case "destroyed": {
+              logging_1.log.warn("start called after destroyed");
+              break;
+            }
+            case "errored": {
+              logging_1.log.error("start called after errored");
+              break;
+            }
+            default: {
+              logging_1.log.warn("weird initialization state");
+              break;
+            }
+          }
+        };
+        this.pause = async () => {
+          if (!this.listening) {
+            return;
+          }
+          this.listening = false;
+          const { stream, mediaStreamAudioSourceNode } = this.getAudioInstances();
+          await this.options.pauseStream(stream);
+          mediaStreamAudioSourceNode.disconnect();
+          this.frameProcessor.pause(this.handleFrameProcessorEvent);
+        };
+        this.destroy = async () => {
+          logging_1.log.debug("destroy called");
+          this.initializationState = "destroyed";
+          const { vadNode } = this.getAudioInstances();
+          if (vadNode instanceof AudioWorkletNode) {
+            vadNode.port.postMessage(messages_1.Message.SpeechStop);
+          }
+          if (this.listening) {
+            await this.pause();
+          }
+          await this.model.release();
+          if (this.ownsAudioContext) {
+            await this._audioContext?.close();
+          }
+        };
+        this.setOptions = (update) => {
+          this.frameProcessor.setOptions(update);
+        };
+        this.processFrame = async (frame) => {
+          await this.frameProcessor.process(frame, this.handleFrameProcessorEvent);
+        };
+        this.handleFrameProcessorEvent = (ev) => {
+          switch (ev.msg) {
+            case messages_1.Message.FrameProcessed:
+              void this.options.onFrameProcessed(ev.probs, ev.frame);
+              break;
+            case messages_1.Message.SpeechStart:
+              void this.options.onSpeechStart();
+              break;
+            case messages_1.Message.SpeechRealStart:
+              void this.options.onSpeechRealStart();
+              break;
+            case messages_1.Message.VADMisfire:
+              void this.options.onVADMisfire();
+              break;
+            case messages_1.Message.SpeechEnd:
+              void this.options.onSpeechEnd(ev.audio);
+              break;
+          }
+        };
+      }
+      static async new(options = {}) {
+        const fullOptions = {
+          ...(0, exports.getDefaultRealTimeVADOptions)(options.model ?? exports.DEFAULT_MODEL),
+          ...options
+        };
+        (0, frame_processor_1.validateOptions)(fullOptions);
+        exports.ort.env.wasm.wasmPaths = fullOptions.onnxWASMBasePath;
+        if (fullOptions.ortConfig !== void 0) {
+          fullOptions.ortConfig(exports.ort);
+        }
+        const modelFile = fullOptions.model === "v5" ? sileroV5File : sileroLegacyFile;
+        const modelURL = fullOptions.baseAssetPath + modelFile;
+        const modelFactory = fullOptions.model === "v5" ? models_1.SileroV5.new : models_1.SileroLegacy.new;
+        let model;
+        try {
+          model = await modelFactory(exports.ort, () => (0, default_model_fetcher_1.defaultModelFetcher)(modelURL));
+        } catch (e) {
+          console.error(`Encountered an error while loading model file ${modelURL}`);
+          throw e;
+        }
+        const frameSamples = fullOptions.model === "v5" ? 512 : 1536;
+        const msPerFrame = frameSamples / 16;
+        const frameProcessor = new frame_processor_1.FrameProcessor(model.process, model.reset_state, {
+          positiveSpeechThreshold: fullOptions.positiveSpeechThreshold,
+          negativeSpeechThreshold: fullOptions.negativeSpeechThreshold,
+          redemptionMs: fullOptions.redemptionMs,
+          preSpeechPadMs: fullOptions.preSpeechPadMs,
+          minSpeechMs: fullOptions.minSpeechMs,
+          submitUserSpeechOnPause: fullOptions.submitUserSpeechOnPause
+        }, msPerFrame);
+        const micVad = new _MicVAD(fullOptions, frameProcessor, model, frameSamples);
+        if (fullOptions.startOnLoad) {
+          try {
+            await micVad.start();
+          } catch (e) {
+            console.error("Error starting micVad", e);
+            throw e;
+          }
+        }
+        return micVad;
+      }
+    };
+    exports.MicVAD = MicVAD;
+  }
+});
+
+// ../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/index.js
+var require_dist = __commonJS({
+  "../../node_modules/.pnpm/@ricky0123+vad-web@0.0.30/node_modules/@ricky0123/vad-web/dist/index.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getDefaultRealTimeVADOptions = exports.MicVAD = exports.DEFAULT_MODEL = exports.utils = exports.NonRealTimeVAD = exports.Message = exports.FrameProcessor = exports.defaultModelFetcher = exports.baseAssetPath = void 0;
+    var asset_path_1 = require_asset_path();
+    Object.defineProperty(exports, "baseAssetPath", { enumerable: true, get: function() {
+      return asset_path_1.baseAssetPath;
+    } });
+    var default_model_fetcher_1 = require_default_model_fetcher();
+    Object.defineProperty(exports, "defaultModelFetcher", { enumerable: true, get: function() {
+      return default_model_fetcher_1.defaultModelFetcher;
+    } });
+    var frame_processor_1 = require_frame_processor();
+    Object.defineProperty(exports, "FrameProcessor", { enumerable: true, get: function() {
+      return frame_processor_1.FrameProcessor;
+    } });
+    var messages_1 = require_messages();
+    Object.defineProperty(exports, "Message", { enumerable: true, get: function() {
+      return messages_1.Message;
+    } });
+    var non_real_time_vad_1 = require_non_real_time_vad();
+    Object.defineProperty(exports, "NonRealTimeVAD", { enumerable: true, get: function() {
+      return non_real_time_vad_1.NonRealTimeVAD;
+    } });
+    var utils_1 = require_utils();
+    exports.utils = {
+      audioFileToArray: utils_1.audioFileToArray,
+      minFramesForTargetMS: utils_1.minFramesForTargetMS,
+      arrayBufferToBase64: utils_1.arrayBufferToBase64,
+      encodeWAV: utils_1.encodeWAV
+    };
+    var real_time_vad_1 = require_real_time_vad();
+    Object.defineProperty(exports, "DEFAULT_MODEL", { enumerable: true, get: function() {
+      return real_time_vad_1.DEFAULT_MODEL;
+    } });
+    Object.defineProperty(exports, "MicVAD", { enumerable: true, get: function() {
+      return real_time_vad_1.MicVAD;
+    } });
+    Object.defineProperty(exports, "getDefaultRealTimeVADOptions", { enumerable: true, get: function() {
+      return real_time_vad_1.getDefaultRealTimeVADOptions;
+    } });
+  }
+});
 
 // ignore-modules:node:fs
 var node_fs_default = {};
@@ -28274,6 +29430,309 @@ Pipeline {
   }
 };
 
+// src/pipelines/vad/build_timeline.js
+var DEFAULT_VAD_OPTIONS = {
+  provider: "vad-web",
+  pre_speech_pad_ms: 200,
+  post_speech_pad_ms: 300,
+  min_speech_ms: 150,
+  min_silence_ms: 400,
+  max_merge_gap_ms: 500,
+  preserve_full_audio_if_empty: true,
+  debug: false
+};
+function normalizeVoiceActivityDetectionOptions(voice_activity_detection) {
+  if (!voice_activity_detection) {
+    return null;
+  }
+  if (voice_activity_detection === true) {
+    return { ...DEFAULT_VAD_OPTIONS };
+  }
+  return {
+    ...DEFAULT_VAD_OPTIONS,
+    ...voice_activity_detection,
+    provider: "vad-web"
+  };
+}
+function clamp(value, min3, max2) {
+  return Math.min(Math.max(value, min3), max2);
+}
+function toSampleIndex(seconds, sampling_rate, max_length, mode) {
+  const scaled = seconds * sampling_rate;
+  const index = mode === "ceil" ? Math.ceil(scaled) : Math.floor(scaled);
+  return clamp(index, 0, max_length);
+}
+function mergeSpeechRegions(detected_segments, original_duration_s, options) {
+  if (!options || detected_segments.length === 0) {
+    return [];
+  }
+  const pre_pad_s = options.pre_speech_pad_ms / 1e3;
+  const post_pad_s = options.post_speech_pad_ms / 1e3;
+  const max_merge_gap_s = options.max_merge_gap_ms / 1e3;
+  const padded = detected_segments.map(({ start_ms, end_ms }) => ({
+    start_s: clamp(start_ms / 1e3 - pre_pad_s, 0, original_duration_s),
+    end_s: clamp(end_ms / 1e3 + post_pad_s, 0, original_duration_s)
+  })).filter((segment) => segment.end_s > segment.start_s).sort((a, b) => a.start_s - b.start_s);
+  if (padded.length === 0) {
+    return [];
+  }
+  const merged = [padded[0]];
+  for (let i = 1; i < padded.length; ++i) {
+    const current = padded[i];
+    const previous = merged[merged.length - 1];
+    if (current.start_s <= previous.end_s + max_merge_gap_s) {
+      previous.end_s = Math.max(previous.end_s, current.end_s);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+  return merged;
+}
+function buildVoiceActivityTimeline(audio, sampling_rate, detected_segments, options) {
+  const originalDurationS = sampling_rate > 0 ? audio.length / sampling_rate : 0;
+  const mergedSegments = mergeSpeechRegions(detected_segments, originalDurationS, options);
+  if (mergedSegments.length === 0) {
+    return {
+      processedAudio: new Float32Array(0),
+      segments: [],
+      originalDurationS,
+      compactDurationS: 0,
+      ...options?.debug ? {
+        debugMetadata: {
+          detectedSegments: detected_segments,
+          mergedSegments,
+          originalDurationS,
+          compactDurationS: 0
+        }
+      } : {}
+    };
+  }
+  const slices = [];
+  let compactLength = 0;
+  for (const segment of mergedSegments) {
+    const startIndex = toSampleIndex(segment.start_s, sampling_rate, audio.length, "floor");
+    const endIndex = toSampleIndex(segment.end_s, sampling_rate, audio.length, "ceil");
+    if (endIndex <= startIndex) {
+      continue;
+    }
+    slices.push({ startIndex, endIndex });
+    compactLength += endIndex - startIndex;
+  }
+  const processedAudio = new Float32Array(compactLength);
+  const segments = [];
+  let writeOffset = 0;
+  for (const { startIndex, endIndex } of slices) {
+    const slice3 = audio.subarray(startIndex, endIndex);
+    processedAudio.set(slice3, writeOffset);
+    const compactStart = writeOffset / sampling_rate;
+    writeOffset += slice3.length;
+    const compactEnd = writeOffset / sampling_rate;
+    segments.push({
+      original_start_s: startIndex / sampling_rate,
+      original_end_s: endIndex / sampling_rate,
+      compact_start_s: compactStart,
+      compact_end_s: compactEnd
+    });
+  }
+  const compactDurationS = sampling_rate > 0 ? processedAudio.length / sampling_rate : 0;
+  return {
+    processedAudio,
+    segments,
+    originalDurationS,
+    compactDurationS,
+    ...options?.debug ? {
+      debugMetadata: {
+        detectedSegments: detected_segments,
+        mergedSegments,
+        originalDurationS,
+        compactDurationS
+      }
+    } : {}
+  };
+}
+
+// src/pipelines/vad/remap_timestamps.js
+var EPSILON2 = 1e-6;
+function clamp2(value, min3, max2) {
+  return Math.min(Math.max(value, min3), max2);
+}
+function getOriginalDurationS(segments) {
+  return segments.length > 0 ? segments[segments.length - 1].original_end_s : 0;
+}
+function remapCompactTimestamp(compact_time_s, segments, boundary = "start") {
+  if (!Number.isFinite(compact_time_s) || segments.length === 0) {
+    return 0;
+  }
+  if (compact_time_s <= segments[0].compact_start_s + EPSILON2) {
+    return segments[0].original_start_s;
+  }
+  const lastSegment = segments[segments.length - 1];
+  if (compact_time_s >= lastSegment.compact_end_s - EPSILON2) {
+    return boundary === "end" ? lastSegment.original_end_s : lastSegment.original_end_s;
+  }
+  for (let i = 0; i < segments.length; ++i) {
+    const segment = segments[i];
+    const nextSegment = segments[i + 1];
+    if (Math.abs(compact_time_s - segment.compact_start_s) <= EPSILON2) {
+      return segment.original_start_s;
+    }
+    if (compact_time_s > segment.compact_start_s && compact_time_s < segment.compact_end_s - EPSILON2) {
+      return segment.original_start_s + (compact_time_s - segment.compact_start_s);
+    }
+    if (Math.abs(compact_time_s - segment.compact_end_s) <= EPSILON2) {
+      if (boundary === "start" && nextSegment) {
+        return nextSegment.original_start_s;
+      }
+      return segment.original_end_s;
+    }
+    if (nextSegment && compact_time_s > segment.compact_end_s && compact_time_s < nextSegment.compact_start_s) {
+      return boundary === "start" ? nextSegment.original_start_s : segment.original_end_s;
+    }
+  }
+  return lastSegment.original_end_s;
+}
+function remapTimestampPair(timestamp, segments, original_duration_s, previous_end_s) {
+  let [start, end] = timestamp;
+  if (typeof start === "number") {
+    start = clamp2(remapCompactTimestamp(start, segments, "start"), 0, original_duration_s);
+    start = Math.max(start, previous_end_s);
+  }
+  if (typeof end === "number") {
+    end = clamp2(remapCompactTimestamp(end, segments, "end"), 0, original_duration_s);
+    if (typeof start === "number") {
+      end = Math.max(end, start);
+    }
+    end = Math.max(end, previous_end_s);
+  }
+  return {
+    timestamp: [start, end],
+    previousEndS: typeof end === "number" ? end : typeof start === "number" ? start : previous_end_s
+  };
+}
+function remapWhisperOutputTimestamps(output, segments, original_duration_s = getOriginalDurationS(segments)) {
+  if (!output?.chunks?.length || segments.length === 0) {
+    return output;
+  }
+  let previousEndS = 0;
+  for (const chunk2 of output.chunks) {
+    if (!Array.isArray(chunk2.timestamp) || chunk2.timestamp.length !== 2) {
+      continue;
+    }
+    const remapped = remapTimestampPair(chunk2.timestamp, segments, original_duration_s, previousEndS);
+    chunk2.timestamp = remapped.timestamp;
+    previousEndS = remapped.previousEndS;
+  }
+  return output;
+}
+
+// src/pipelines/vad/run_vad_web.js
+var VAD_WEB_MODEL_URL = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/silero_vad_legacy.onnx";
+function unwrapVadModule(moduleNamespace) {
+  if (moduleNamespace && typeof moduleNamespace === "object" && "default" in moduleNamespace) {
+    return (
+      /** @type {Record<string, any>} */
+      moduleNamespace.default
+    );
+  }
+  return (
+    /** @type {Record<string, any>} */
+    moduleNamespace
+  );
+}
+function createOrtConfig() {
+  const sharedOnnxEnv = env.backends.onnx ?? {};
+  const sharedWasmEnv = sharedOnnxEnv.wasm ?? {};
+  return (ort) => {
+    if (!ort?.env) return;
+    if (ort.env.wasm && sharedWasmEnv) {
+      if (sharedWasmEnv.wasmPaths) {
+        ort.env.wasm.wasmPaths = sharedWasmEnv.wasmPaths;
+      }
+      if (typeof sharedWasmEnv.proxy === "boolean") {
+        ort.env.wasm.proxy = sharedWasmEnv.proxy;
+      }
+      if (typeof sharedWasmEnv.numThreads === "number") {
+        ort.env.wasm.numThreads = sharedWasmEnv.numThreads;
+      }
+      if (typeof sharedWasmEnv.simd === "boolean") {
+        ort.env.wasm.simd = sharedWasmEnv.simd;
+      }
+    }
+    if (sharedOnnxEnv.logLevel) {
+      ort.env.logLevel = sharedOnnxEnv.logLevel;
+    }
+  };
+}
+async function runVADWeb(audio, sampling_rate, options) {
+  const imported = await Promise.resolve().then(() => __toESM(require_dist(), 1));
+  const vadModule = unwrapVadModule(imported);
+  const NonRealTimeVAD = vadModule.NonRealTimeVAD ?? imported.NonRealTimeVAD;
+  if (!NonRealTimeVAD?.new) {
+    throw new Error("Failed to load NonRealTimeVAD from @ricky0123/vad-web.");
+  }
+  const vad = await NonRealTimeVAD.new({
+    modelURL: VAD_WEB_MODEL_URL,
+    minSpeechMs: options.min_speech_ms,
+    redemptionMs: options.min_silence_ms,
+    ortConfig: createOrtConfig()
+  });
+  const segments = [];
+  for await (const { start, end } of vad.run(audio, sampling_rate)) {
+    segments.push({
+      start_ms: start,
+      end_ms: end
+    });
+  }
+  return segments;
+}
+
+// src/pipelines/vad/index.js
+var hasWarnedAboutVADFailure = false;
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function warnOnce(message, error) {
+  if (hasWarnedAboutVADFailure) {
+    return;
+  }
+  hasWarnedAboutVADFailure = true;
+  logger.warn(`${message} Falling back to normal Whisper transcription.`, getErrorMessage(error));
+}
+async function preprocessAudioWithVoiceActivityDetection(audio, sampling_rate, voice_activity_detection) {
+  const options = normalizeVoiceActivityDetectionOptions(voice_activity_detection);
+  const fallback = {
+    applied: false,
+    processedAudio: audio,
+    segments: [],
+    originalDurationS: sampling_rate > 0 ? audio.length / sampling_rate : 0,
+    compactDurationS: sampling_rate > 0 ? audio.length / sampling_rate : 0
+  };
+  if (!options) {
+    return fallback;
+  }
+  if (options.provider !== "vad-web") {
+    warnOnce(`Unsupported voice activity detection provider "${options.provider}".`, options.provider);
+    return fallback;
+  }
+  try {
+    const detectedSegments = await runVADWeb(audio, sampling_rate, options);
+    const timeline = buildVoiceActivityTimeline(audio, sampling_rate, detectedSegments, options);
+    if (timeline.processedAudio.length === 0 && options.preserve_full_audio_if_empty) {
+      return {
+        ...fallback,
+        ...timeline.debugMetadata ? { debugMetadata: timeline.debugMetadata } : {}
+      };
+    }
+    return {
+      applied: true,
+      ...timeline
+    };
+  } catch (error) {
+    warnOnce("Voice activity detection preprocessing failed.", error);
+    return fallback;
+  }
+}
+
 // src/pipelines/automatic-speech-recognition.js
 var MIN_HALLUCINATION_CHUNK_S = 2;
 var MAX_HALLUCINATION_DEPTH = 3;
@@ -28334,9 +29793,11 @@ Pipeline {
     const chunk_length_s = kwargs.chunk_length_s ?? 0;
     const force_full_sequences = kwargs.force_full_sequences ?? false;
     const hallucination_recovery = kwargs.hallucination_recovery ?? true;
+    const voice_activity_detection = kwargs.voice_activity_detection ?? false;
     let stride_length_s = kwargs.stride_length_s ?? null;
     const generation_config = { ...kwargs };
     generation_config["hallucination_recovery"] = hallucination_recovery;
+    delete generation_config["voice_activity_detection"];
     if (return_timestamps === "word") {
       generation_config["return_token_timestamps"] = true;
       generation_config["return_timestamps"] = true;
@@ -28353,6 +29814,20 @@ Pipeline {
     const preparedAudios = await prepareAudios(batchedAudio, sampling_rate);
     const toReturn = [];
     for (const aud of preparedAudios) {
+      const vadResult = await preprocessAudioWithVoiceActivityDetection(
+        aud,
+        sampling_rate,
+        voice_activity_detection
+      );
+      const transcriptionAudio = vadResult.processedAudio;
+      if (vadResult.applied && transcriptionAudio.length === 0) {
+        const output2 = return_timestamps ? { text: "", chunks: [] } : { text: "" };
+        if (voice_activity_detection && vadResult.debugMetadata) {
+          output2.voice_activity_detection = vadResult.debugMetadata;
+        }
+        toReturn.push(output2);
+        continue;
+      }
       let chunks = [];
       if (chunk_length_s > 0) {
         if (stride_length_s === null) {
@@ -28366,10 +29841,10 @@ Pipeline {
         let offset = 0;
         while (true) {
           const offset_end = offset + window2;
-          const subarr = aud.subarray(offset, offset_end);
+          const subarr = transcriptionAudio.subarray(offset, offset_end);
           const feature = await this.processor(subarr);
           const is_first = offset === 0;
-          const is_last = offset_end >= aud.length;
+          const is_last = offset_end >= transcriptionAudio.length;
           chunks.push({
             stride: [subarr.length, is_first ? 0 : stride, is_last ? 0 : stride],
             input_features: feature.input_features,
@@ -28381,8 +29856,8 @@ Pipeline {
       } else {
         chunks = [
           {
-            stride: [aud.length, 0, 0],
-            input_features: (await this.processor(aud)).input_features,
+            stride: [transcriptionAudio.length, 0, 0],
+            input_features: (await this.processor(transcriptionAudio)).input_features,
             is_last: true
           }
         ];
@@ -28395,7 +29870,7 @@ Pipeline {
           const audioOffset = ci * chunkJump;
           const result = await this._processChunkWithRetry(
             chunks[ci],
-            aud,
+            transcriptionAudio,
             generation_config,
             return_timestamps,
             timestamp_begin,
@@ -28423,7 +29898,11 @@ Pipeline {
             chunk2.tokens = sequences.slice(prefixLength);
             chunk2.token_timestamps = token_ts.slice(prefixLength).map((x) => round(x, 2));
           } else {
-            const sequences = data?.sequences ?? data;
+            const sequences = (
+              /** @type {Tensor} */
+              /** @type {any} */
+              data?.sequences ?? data
+            );
             chunk2.tokens = /** @type {Tensor} */
             sequences[0].tolist();
           }
@@ -28435,7 +29914,14 @@ Pipeline {
         return_timestamps,
         force_full_sequences
       });
-      toReturn.push({ text: full_text, ...optional });
+      const output = { text: full_text, ...optional };
+      if (vadResult.applied && return_timestamps) {
+        remapWhisperOutputTimestamps(output, vadResult.segments, vadResult.originalDurationS);
+      }
+      if (voice_activity_detection && vadResult.debugMetadata) {
+        output.voice_activity_detection = vadResult.debugMetadata;
+      }
+      toReturn.push(output);
     }
     return single ? toReturn[0] : toReturn;
   }
@@ -28511,9 +29997,7 @@ Pipeline {
         0
       );
       outputChunk.tokens = sequences.slice(prefixLength);
-      outputChunk.token_timestamps = token_ts.slice(prefixLength).map(
-        (x) => round(Math.max(0, x + timestamp_shift_s), 2)
-      );
+      outputChunk.token_timestamps = token_ts.slice(prefixLength).map((x) => round(Math.max(0, x + timestamp_shift_s), 2));
     } else {
       const sequences = data?.sequences ?? data;
       outputChunk.tokens = /** @type {Tensor} */
