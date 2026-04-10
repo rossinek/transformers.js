@@ -138,6 +138,61 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         text: string;
     }[]>;
     _call_whisper(audio: any, kwargs: any): Promise<any>;
+    _transcribeWhisperAudio({ audio, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, }: {
+        audio: any;
+        generation_config: any;
+        return_timestamps: any;
+        time_precision: any;
+        force_full_sequences: any;
+        timestamp_begin: any;
+        hop_length: any;
+        sampling_rate: any;
+        chunk_length_s: any;
+        stride_length_s: any;
+    }): Promise<{
+        output: any;
+        analyses: {
+            start_s: any;
+            end_s: any;
+            duration_s: number;
+            text_token_count: any;
+            avg_logprob: any;
+            tokens_per_second: number;
+            suspicious: boolean;
+        }[];
+    }>;
+    _normalizeWordTimestampOutput(output: any): any;
+    _filterWordOutputToSentenceText(output: any, sentence_text: any): any;
+    _getStrictRecoveryGenerationConfig(generation_config: any): any;
+    _createWhisperChunks(audio: any, chunk_length_s: any, stride_length_s: any, sampling_rate: any): Promise<{
+        stride: number[];
+        input_features: Tensor;
+        is_last: boolean;
+    }[]>;
+    _buildChunkAnalysis(result: any, start_s: any, end_s: any, logprob_threshold: any): {
+        start_s: any;
+        end_s: any;
+        duration_s: number;
+        text_token_count: any;
+        avg_logprob: any;
+        tokens_per_second: number;
+        suspicious: boolean;
+    };
+    _remapChunkAnalyses(analyses: any, vadResult: any): any;
+    _isSuspiciousChunkResult(result: any, chunk_duration_s: any, logprob_threshold: any): boolean;
+    _collectFallbackWindows(analyses: any, vadResult: any): any[];
+    _collectRemovedVadGapWindows(vadResult: any): {
+        start_s: number;
+        end_s: any;
+        remapped: boolean;
+    }[];
+    _shouldPreferFallbackAnalysis(baseAnalysis: any, fallbackAnalysis: any): boolean;
+    _scoreAnalysisWindow(analyses: any, start_s: any, end_s: any): {
+        text_token_count: number;
+        tokens_per_second: number;
+        avg_logprob: number;
+        suspicious: boolean;
+    };
     /**
      * Processes a single audio chunk, detecting hallucination (very low token density)
      * and recursively splitting into smaller sub-chunks when needed.
@@ -295,5 +350,6 @@ export type AutomaticSpeechRecognitionPipelineCallbackSingle = (audio: AudioInpu
 export type AutomaticSpeechRecognitionPipelineCallbackBatch = (audio: AudioInput[], options?: Partial<AutomaticSpeechRecognitionConfig>) => Promise<AutomaticSpeechRecognitionOutput[]>;
 export type AutomaticSpeechRecognitionPipelineCallback = AutomaticSpeechRecognitionPipelineCallbackSingle & AutomaticSpeechRecognitionPipelineCallbackBatch;
 export type AutomaticSpeechRecognitionPipelineType = TextAudioPipelineConstructorArgs & AutomaticSpeechRecognitionPipelineCallback & Disposable;
+import { Tensor } from '../utils/tensor.js';
 export {};
 //# sourceMappingURL=automatic-speech-recognition.d.ts.map

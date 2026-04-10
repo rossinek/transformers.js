@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import { buildVoiceActivityTimeline, normalizeVoiceActivityDetectionOptions } from './build_timeline.js';
-import { remapWhisperOutputTimestamps } from './remap_timestamps.js';
+import { remapCompactTimestamp, remapWhisperOutputTimestamps } from './remap_timestamps.js';
 import { runVADWeb } from './run_vad_web.js';
 
 let hasWarnedAboutVADFailure = false;
@@ -72,4 +72,4 @@ export async function preprocessAudioWithVoiceActivityDetection(audio, sampling_
     }
 }
 
-export { remapWhisperOutputTimestamps };
+export { remapCompactTimestamp, remapWhisperOutputTimestamps };

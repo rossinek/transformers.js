@@ -250,6 +250,19 @@
     };
     window._state = state;
 
+    function getBooleanQueryParam(name, fallback) {
+      const value = new URLSearchParams(location.search).get(name);
+      if (value == null) return fallback;
+      return !(value === "0" || value === "false");
+    }
+
+    function getNumberQueryParam(name, fallback) {
+      const value = new URLSearchParams(location.search).get(name);
+      if (value == null) return fallback;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
     // ── Session storage ──
     const STORAGE_KEY = "whisper-benchmark-results";
 
@@ -389,8 +402,16 @@
       const audio = await proc.processUrl(`/fixtures/${clip.file}`);
       const useVad = document.getElementById("chk-vad")?.checked ?? true;
       const useHalluc = document.getElementById("chk-halluc")?.checked ?? true;
+      const logprobThreshold = getNumberQueryParam("logprob", null);
       const vadOpts = useVad ? { pre_speech_pad_ms: 200, post_speech_pad_ms: 300, min_speech_ms: 150, min_silence_ms: 400, max_merge_gap_ms: 500, preserve_full_audio_if_empty: true } : false;
-      const common = { language: clip.lang, chunk_length_s: 30, stride_length_s: 5, voice_activity_detection: vadOpts, hallucination_recovery: useHalluc };
+      const common = {
+        language: clip.lang,
+        chunk_length_s: 30,
+        stride_length_s: 5,
+        voice_activity_detection: vadOpts,
+        hallucination_recovery: useHalluc,
+        ...(logprobThreshold == null ? {} : { logprob_threshold: logprobThreshold }),
+      };
       const wr = await state.transcriber(audio, { ...common, return_timestamps: "word" });
       const sr = await state.transcriber(audio, { ...common, return_timestamps: true });
       return {
@@ -1112,6 +1133,8 @@
       }
     });
     init().then(() => {
+      document.getElementById("chk-vad").checked = getBooleanQueryParam("vad", true);
+      document.getElementById("chk-halluc").checked = getBooleanQueryParam("hr", true);
       window.__READY__ = true;
       if (new URLSearchParams(location.search).has("autorun")) autorun();
     });

@@ -17,6 +17,7 @@ export function preprocessAudioWithVoiceActivityDetection(audio: Float32Array, s
     compactDurationS: number;
     debugMetadata?: Record<string, unknown>;
 }>;
-export { remapWhisperOutputTimestamps };
+import { remapCompactTimestamp } from './remap_timestamps.js';
 import { remapWhisperOutputTimestamps } from './remap_timestamps.js';
+export { remapCompactTimestamp, remapWhisperOutputTimestamps };
 //# sourceMappingURL=index.d.ts.map

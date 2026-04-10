@@ -36102,8 +36102,19 @@ async function preprocessAudioWithVoiceActivityDetection(audio, sampling_rate, v
 var MIN_HALLUCINATION_CHUNK_S = 2;
 var MAX_HALLUCINATION_DEPTH = 3;
 var MIN_HALLUCINATION_TOKENS_PER_SECOND = 1;
+var HARD_HALLUCINATION_TOKENS_PER_SECOND = 0.6;
+var MIN_SUSPICIOUS_LOGPROB_THRESHOLD = -0.45;
+var LOW_TEXT_TOKEN_COUNT_TRIGGER = 12;
 var TRUNCATION_GUARD_MIN_RATIO = 0.5;
 var TRUNCATION_GUARD_SCORE_MARGIN = 0.5;
+var VAD_FALLBACK_WINDOW_PADDING_S = 0.75;
+var MIN_VAD_REMOVED_GAP_S = 8;
+var MIN_VAD_REMOVED_GAP_TOTAL_S = 12;
+var MIN_VAD_REMOVED_GAP_RATIO = 0.2;
+var EDGE_PUNCTUATION_REGEX = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+function normalizeAlignmentWord(text) {
+  return text.toLowerCase().replace(EDGE_PUNCTUATION_REGEX, "");
+}
 var AutomaticSpeechRecognitionPipeline = class extends /** @type {new (options: TextAudioPipelineConstructorArgs) => AutomaticSpeechRecognitionPipelineType} */
 Pipeline {
   async _call(audio, kwargs = {}) {
@@ -36193,95 +36204,56 @@ Pipeline {
         toReturn.push(output2);
         continue;
       }
-      let chunks = [];
-      if (chunk_length_s > 0) {
-        if (stride_length_s === null) {
-          stride_length_s = chunk_length_s / 6;
-        } else if (chunk_length_s <= stride_length_s) {
-          throw Error("`chunk_length_s` must be larger than `stride_length_s`.");
-        }
-        const window2 = sampling_rate * chunk_length_s;
-        const stride = sampling_rate * stride_length_s;
-        const jump = window2 - 2 * stride;
-        let offset = 0;
-        while (true) {
-          const offset_end = offset + window2;
-          const subarr = transcriptionAudio.subarray(offset, offset_end);
-          const feature = await this.processor(subarr);
-          const is_first = offset === 0;
-          const is_last = offset_end >= transcriptionAudio.length;
-          chunks.push({
-            stride: [subarr.length, is_first ? 0 : stride, is_last ? 0 : stride],
-            input_features: feature.input_features,
-            is_last
-          });
-          if (is_last) break;
-          offset += jump;
-        }
-      } else {
-        chunks = [
-          {
-            stride: [transcriptionAudio.length, 0, 0],
-            input_features: (await this.processor(transcriptionAudio)).input_features,
-            is_last: true
-          }
-        ];
-      }
       const timestamp_begin = this.tokenizer.timestamp_begin;
-      if (hallucination_recovery) {
-        const processedChunks = [];
-        const chunkJump = chunk_length_s > 0 ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6) : 0;
-        for (let ci = 0; ci < chunks.length; ++ci) {
-          const audioOffset = ci * chunkJump;
-          const result = await this._processChunkWithRetry(
-            chunks[ci],
-            transcriptionAudio,
-            generation_config,
+      const vadPath = await this._transcribeWhisperAudio({
+        audio: transcriptionAudio,
+        generation_config,
+        return_timestamps,
+        time_precision,
+        force_full_sequences,
+        timestamp_begin,
+        hop_length,
+        sampling_rate,
+        chunk_length_s,
+        stride_length_s
+      });
+      let output = vadPath.output;
+      if (vadResult.applied && return_timestamps) {
+        remapWhisperOutputTimestamps(output, vadResult.segments, vadResult.originalDurationS);
+      }
+      if (vadResult.applied && hallucination_recovery) {
+        const fallbackWindows = this._collectFallbackWindows(vadPath.analyses, vadResult);
+        if (fallbackWindows.length > 0) {
+          const originalFallbackConfig = {
+            ...generation_config,
+            hallucination_recovery: false
+          };
+          const originalPath = await this._transcribeWhisperAudio({
+            audio: aud,
+            generation_config: originalFallbackConfig,
             return_timestamps,
+            time_precision,
+            force_full_sequences,
             timestamp_begin,
             hop_length,
             sampling_rate,
-            audioOffset
-          );
-          processedChunks.push(...result.chunks);
-        }
-        chunks = processedChunks;
-      } else {
-        for (const chunk2 of chunks) {
-          generation_config.num_frames = Math.floor(chunk2.stride[0] / hop_length);
-          const data = await this.model.generate({
-            inputs: chunk2.input_features,
-            ...generation_config
+            chunk_length_s,
+            stride_length_s
           });
-          if (return_timestamps === "word") {
-            const sequences = data.sequences.tolist()[0];
-            const token_ts = data.token_timestamps.tolist()[0];
-            const prefixLength = Math.max(
-              sequences.findIndex((t) => Number(t) >= timestamp_begin),
-              0
-            );
-            chunk2.tokens = sequences.slice(prefixLength);
-            chunk2.token_timestamps = token_ts.slice(prefixLength).map((x) => round(x, 2));
-          } else {
-            const sequences = (
-              /** @type {Tensor} */
-              /** @type {any} */
-              data?.sequences ?? data
-            );
-            chunk2.tokens = /** @type {Tensor} */
-            sequences[0].tolist();
+          const remappedVadAnalyses = this._remapChunkAnalyses(vadPath.analyses, vadResult);
+          const shouldPreferOriginal = fallbackWindows.some(
+            (window2) => this._shouldPreferFallbackAnalysis(
+              this._scoreAnalysisWindow(remappedVadAnalyses, window2.start_s, window2.end_s),
+              this._scoreAnalysisWindow(originalPath.analyses, window2.start_s, window2.end_s)
+            )
+          );
+          if (shouldPreferOriginal) {
+            output = originalPath.output;
           }
-          chunk2.stride = chunk2.stride.map((x) => x / sampling_rate);
         }
       }
-      const [full_text, optional] = this.tokenizer._decode_asr(chunks, {
-        time_precision,
-        return_timestamps,
-        force_full_sequences
-      });
-      const output = { text: full_text, ...optional };
-      if (vadResult.applied && return_timestamps) {
-        remapWhisperOutputTimestamps(output, vadResult.segments, vadResult.originalDurationS);
+      if (return_timestamps === "word") {
+        this._normalizeWordTimestampOutput(output);
       }
       if (voice_activity_detection && vadResult.debugMetadata) {
         output.voice_activity_detection = vadResult.debugMetadata;
@@ -36289,6 +36261,359 @@ Pipeline {
       toReturn.push(output);
     }
     return single ? toReturn[0] : toReturn;
+  }
+  async _transcribeWhisperAudio({
+    audio,
+    generation_config,
+    return_timestamps,
+    time_precision,
+    force_full_sequences,
+    timestamp_begin,
+    hop_length,
+    sampling_rate,
+    chunk_length_s,
+    stride_length_s
+  }) {
+    const chunks = await this._createWhisperChunks(audio, chunk_length_s, stride_length_s, sampling_rate);
+    const processedChunks = [];
+    const analyses = [];
+    const hallucination_recovery = generation_config.hallucination_recovery !== false;
+    const chunkJump = chunk_length_s > 0 ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6) : 0;
+    for (let ci = 0; ci < chunks.length; ++ci) {
+      const audioOffset = ci * chunkJump;
+      let result;
+      if (hallucination_recovery) {
+        result = await this._processChunkWithRetry(
+          chunks[ci],
+          audio,
+          generation_config,
+          return_timestamps,
+          timestamp_begin,
+          hop_length,
+          sampling_rate,
+          audioOffset
+        );
+      } else {
+        result = await this._generateChunkResult(
+          chunks[ci],
+          generation_config,
+          return_timestamps,
+          timestamp_begin,
+          hop_length,
+          sampling_rate
+        );
+      }
+      processedChunks.push(...result.chunks);
+      analyses.push(
+        this._buildChunkAnalysis(
+          result,
+          audioOffset / sampling_rate,
+          (audioOffset + chunks[ci].stride[0]) / sampling_rate,
+          generation_config.logprob_threshold ?? -1
+        )
+      );
+    }
+    const [full_text, optional] = this.tokenizer._decode_asr(processedChunks, {
+      time_precision,
+      return_timestamps,
+      force_full_sequences
+    });
+    const output = { text: full_text, ...optional };
+    if (return_timestamps === "word") {
+      const [sentence_text] = this.tokenizer._decode_asr(processedChunks, {
+        time_precision,
+        return_timestamps: true,
+        force_full_sequences
+      });
+      this._filterWordOutputToSentenceText(output, sentence_text);
+      output.text = sentence_text.trim();
+    }
+    return {
+      output,
+      analyses
+    };
+  }
+  _normalizeWordTimestampOutput(output) {
+    if (!Array.isArray(output?.chunks)) {
+      return output;
+    }
+    output.chunks = output.chunks.filter((chunk2) => typeof chunk2?.text === "string" && Array.isArray(chunk2.timestamp) && chunk2.timestamp.length === 2).sort((a, b) => {
+      const a_start = typeof a.timestamp[0] === "number" ? a.timestamp[0] : a.timestamp[1] ?? Infinity;
+      const b_start = typeof b.timestamp[0] === "number" ? b.timestamp[0] : b.timestamp[1] ?? Infinity;
+      if (a_start !== b_start) return a_start - b_start;
+      const a_end = typeof a.timestamp[1] === "number" ? a.timestamp[1] : a.timestamp[0] ?? Infinity;
+      const b_end = typeof b.timestamp[1] === "number" ? b.timestamp[1] : b.timestamp[0] ?? Infinity;
+      return a_end - b_end;
+    });
+    const deduped = [];
+    for (const chunk2 of output.chunks) {
+      const prev = deduped[deduped.length - 1];
+      if (!prev) {
+        deduped.push(chunk2);
+        continue;
+      }
+      const prev_start = prev.timestamp[0] ?? prev.timestamp[1];
+      const prev_end = prev.timestamp[1] ?? prev.timestamp[0];
+      const current_start = chunk2.timestamp[0] ?? chunk2.timestamp[1];
+      const current_end = chunk2.timestamp[1] ?? chunk2.timestamp[0];
+      if (typeof prev_start === "number" && typeof prev_end === "number" && typeof current_start === "number" && typeof current_end === "number" && prev.text.trim() === chunk2.text.trim() && Math.abs(prev_start - current_start) <= 0.1 && Math.abs(prev_end - current_end) <= 0.1) {
+        continue;
+      }
+      deduped.push(chunk2);
+    }
+    output.chunks = deduped;
+    if (typeof output.text !== "string" || output.text.trim().length === 0) {
+      output.text = deduped.map((chunk2) => chunk2.text).join("").trim();
+    }
+    return output;
+  }
+  _filterWordOutputToSentenceText(output, sentence_text) {
+    if (!Array.isArray(output?.chunks) || typeof sentence_text !== "string" || sentence_text.trim().length === 0) {
+      return output;
+    }
+    const expected_words = sentence_text.match(/\S+/g) ?? [];
+    if (expected_words.length === 0) {
+      return output;
+    }
+    const candidate_words = output.chunks;
+    const normalized_expected = expected_words.map(normalizeAlignmentWord).filter(Boolean);
+    const normalized_candidates = candidate_words.map((chunk2) => normalizeAlignmentWord(chunk2.text ?? ""));
+    if (normalized_expected.length === 0 || normalized_candidates.every((word) => !word)) {
+      return output;
+    }
+    const rows = normalized_candidates.length;
+    const cols = normalized_expected.length;
+    const dp = Array.from({ length: rows + 1 }, () => new Uint16Array(cols + 1));
+    for (let i2 = rows - 1; i2 >= 0; --i2) {
+      for (let j2 = cols - 1; j2 >= 0; --j2) {
+        dp[i2][j2] = normalized_candidates[i2] !== "" && normalized_candidates[i2] === normalized_expected[j2] ? dp[i2 + 1][j2 + 1] + 1 : Math.max(dp[i2 + 1][j2], dp[i2][j2 + 1]);
+      }
+    }
+    const matched = [];
+    let i = 0;
+    let j = 0;
+    while (i < rows && j < cols) {
+      if (normalized_candidates[i] !== "" && normalized_candidates[i] === normalized_expected[j]) {
+        matched.push(candidate_words[i]);
+        ++i;
+        ++j;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        ++i;
+      } else {
+        ++j;
+      }
+    }
+    if (matched.length > 0) {
+      output.chunks = matched;
+    }
+    return output;
+  }
+  _getStrictRecoveryGenerationConfig(generation_config) {
+    if (generation_config.logprob_threshold != null) {
+      return generation_config;
+    }
+    return {
+      ...generation_config,
+      logprob_threshold: MIN_SUSPICIOUS_LOGPROB_THRESHOLD
+    };
+  }
+  async _createWhisperChunks(audio, chunk_length_s, stride_length_s, sampling_rate) {
+    const chunks = [];
+    if (chunk_length_s > 0) {
+      if (stride_length_s === null) {
+        stride_length_s = chunk_length_s / 6;
+      } else if (chunk_length_s <= stride_length_s) {
+        throw Error("`chunk_length_s` must be larger than `stride_length_s`.");
+      }
+      const window2 = sampling_rate * chunk_length_s;
+      const stride = sampling_rate * stride_length_s;
+      const jump = window2 - 2 * stride;
+      let offset = 0;
+      while (true) {
+        const offset_end = offset + window2;
+        const subarr = audio.subarray(offset, offset_end);
+        const feature = await this.processor(subarr);
+        const is_first = offset === 0;
+        const is_last = offset_end >= audio.length;
+        chunks.push({
+          stride: [subarr.length, is_first ? 0 : stride, is_last ? 0 : stride],
+          input_features: feature.input_features,
+          is_last
+        });
+        if (is_last) break;
+        offset += jump;
+      }
+    } else {
+      chunks.push({
+        stride: [audio.length, 0, 0],
+        input_features: (await this.processor(audio)).input_features,
+        is_last: true
+      });
+    }
+    return chunks;
+  }
+  _buildChunkAnalysis(result, start_s, end_s, logprob_threshold) {
+    const duration_s = Math.max(end_s - start_s, 0.1);
+    const tokens_per_second = result.text_token_count / duration_s;
+    return {
+      start_s,
+      end_s,
+      duration_s,
+      text_token_count: result.text_token_count,
+      avg_logprob: result.avg_logprob,
+      tokens_per_second,
+      suspicious: this._isSuspiciousChunkResult(result, duration_s, logprob_threshold)
+    };
+  }
+  _remapChunkAnalyses(analyses, vadResult) {
+    if (!vadResult.applied || vadResult.segments.length === 0) {
+      return analyses;
+    }
+    return analyses.map((analysis) => ({
+      ...analysis,
+      start_s: remapCompactTimestamp(analysis.start_s, vadResult.segments, "start"),
+      end_s: remapCompactTimestamp(analysis.end_s, vadResult.segments, "end"),
+      duration_s: Math.max(
+        remapCompactTimestamp(analysis.end_s, vadResult.segments, "end") - remapCompactTimestamp(analysis.start_s, vadResult.segments, "start"),
+        0.1
+      )
+    }));
+  }
+  _isSuspiciousChunkResult(result, chunk_duration_s, logprob_threshold) {
+    const tokens_per_second = result.text_token_count / Math.max(chunk_duration_s, 0.1);
+    if (result.text_token_count === 0) {
+      return true;
+    }
+    if (tokens_per_second < HARD_HALLUCINATION_TOKENS_PER_SECOND && result.text_token_count <= LOW_TEXT_TOKEN_COUNT_TRIGGER) {
+      return true;
+    }
+    const effective_logprob_threshold = Math.max(logprob_threshold, MIN_SUSPICIOUS_LOGPROB_THRESHOLD);
+    const low_text_coverage = tokens_per_second < MIN_HALLUCINATION_TOKENS_PER_SECOND;
+    const low_logprob = result.avg_logprob === null ? result.text_token_count === 0 : result.avg_logprob < effective_logprob_threshold;
+    return low_text_coverage && (low_logprob || result.text_token_count <= LOW_TEXT_TOKEN_COUNT_TRIGGER);
+  }
+  _collectFallbackWindows(analyses, vadResult) {
+    const sourceWindows = analyses.filter((analysis) => {
+      if (analysis.suspicious || !vadResult.applied || vadResult.segments.length === 0) {
+        return analysis.suspicious;
+      }
+      const remappedStart = remapCompactTimestamp(analysis.start_s, vadResult.segments, "start");
+      const remappedEnd = remapCompactTimestamp(analysis.end_s, vadResult.segments, "end");
+      const remappedDuration = Math.max(remappedEnd - remappedStart, 0.1);
+      return analysis.text_token_count / remappedDuration < HARD_HALLUCINATION_TOKENS_PER_SECOND;
+    });
+    sourceWindows.push(...this._collectRemovedVadGapWindows(vadResult));
+    if (sourceWindows.length === 0) {
+      return [];
+    }
+    const windows = sourceWindows.map((analysis) => {
+      let start_s = analysis.start_s;
+      let end_s = analysis.end_s;
+      if (analysis.remapped !== true && vadResult.applied && vadResult.segments.length > 0) {
+        start_s = remapCompactTimestamp(start_s, vadResult.segments, "start");
+        end_s = remapCompactTimestamp(end_s, vadResult.segments, "end");
+      }
+      start_s = Math.max(0, start_s - VAD_FALLBACK_WINDOW_PADDING_S);
+      end_s = Math.min(vadResult.originalDurationS, end_s + VAD_FALLBACK_WINDOW_PADDING_S);
+      return { start_s, end_s };
+    }).sort((a, b) => a.start_s - b.start_s);
+    const merged = [windows[0]];
+    for (let i = 1; i < windows.length; ++i) {
+      const current = windows[i];
+      const previous = merged[merged.length - 1];
+      if (current.start_s <= previous.end_s) {
+        previous.end_s = Math.max(previous.end_s, current.end_s);
+      } else {
+        merged.push({ ...current });
+      }
+    }
+    return merged;
+  }
+  _collectRemovedVadGapWindows(vadResult) {
+    if (!vadResult.applied || vadResult.segments.length === 0) {
+      return [];
+    }
+    const windows = [];
+    let cursor = 0;
+    for (const segment of vadResult.segments) {
+      const gapDuration = segment.original_start_s - cursor;
+      if (gapDuration >= MIN_VAD_REMOVED_GAP_S) {
+        windows.push({
+          start_s: cursor,
+          end_s: segment.original_start_s,
+          remapped: true
+        });
+      }
+      cursor = segment.original_end_s;
+    }
+    const trailingGap = vadResult.originalDurationS - cursor;
+    if (trailingGap >= MIN_VAD_REMOVED_GAP_S) {
+      windows.push({
+        start_s: cursor,
+        end_s: vadResult.originalDurationS,
+        remapped: true
+      });
+    }
+    const totalGapDuration = windows.reduce((sum, window2) => sum + (window2.end_s - window2.start_s), 0);
+    const minUsefulDuration = Math.max(
+      MIN_VAD_REMOVED_GAP_TOTAL_S,
+      vadResult.originalDurationS * MIN_VAD_REMOVED_GAP_RATIO
+    );
+    if (totalGapDuration < minUsefulDuration) {
+      return [];
+    }
+    return windows;
+  }
+  _shouldPreferFallbackAnalysis(baseAnalysis, fallbackAnalysis) {
+    if (fallbackAnalysis.text_token_count === 0) {
+      return false;
+    }
+    if (baseAnalysis.text_token_count === 0) {
+      return true;
+    }
+    if (baseAnalysis.suspicious && !fallbackAnalysis.suspicious) {
+      return true;
+    }
+    const fallbackLogprob = fallbackAnalysis.avg_logprob ?? -Infinity;
+    const baseLogprob = baseAnalysis.avg_logprob ?? -Infinity;
+    return fallbackAnalysis.tokens_per_second > baseAnalysis.tokens_per_second + 0.5 && fallbackLogprob >= baseLogprob - 0.1;
+  }
+  _scoreAnalysisWindow(analyses, start_s, end_s) {
+    const overlapping = analyses.filter((analysis) => analysis.start_s <= end_s && analysis.end_s >= start_s);
+    if (overlapping.length === 0) {
+      return {
+        text_token_count: 0,
+        tokens_per_second: 0,
+        avg_logprob: null,
+        suspicious: true
+      };
+    }
+    let text_token_count = 0;
+    let total_duration_s = 0;
+    let total_logprob = 0;
+    let has_any_score = false;
+    for (const analysis of overlapping) {
+      const overlap_duration = Math.max(0, Math.min(analysis.end_s, end_s) - Math.max(analysis.start_s, start_s));
+      if (overlap_duration <= 0) {
+        continue;
+      }
+      text_token_count += analysis.text_token_count;
+      total_duration_s += overlap_duration;
+      if (analysis.avg_logprob !== null) {
+        total_logprob += analysis.avg_logprob * analysis.text_token_count;
+        has_any_score = true;
+      }
+    }
+    const duration_s = Math.max(total_duration_s, 0.1);
+    const tokens_per_second = text_token_count / duration_s;
+    const avg_logprob = has_any_score && text_token_count > 0 ? total_logprob / text_token_count : null;
+    const suspicious = text_token_count === 0 || tokens_per_second < HARD_HALLUCINATION_TOKENS_PER_SECOND && text_token_count <= LOW_TEXT_TOKEN_COUNT_TRIGGER || tokens_per_second < MIN_HALLUCINATION_TOKENS_PER_SECOND && (text_token_count <= LOW_TEXT_TOKEN_COUNT_TRIGGER || avg_logprob !== null && avg_logprob < MIN_SUSPICIOUS_LOGPROB_THRESHOLD);
+    return {
+      text_token_count,
+      tokens_per_second,
+      avg_logprob,
+      suspicious
+    };
   }
   /**
    * Processes a single audio chunk, detecting hallucination (very low token density)
@@ -36309,11 +36634,24 @@ Pipeline {
     if (chunk_duration_s <= MIN_HALLUCINATION_CHUNK_S || !this._shouldRetryChunk(original, chunk_duration_s, logprob_threshold)) {
       return original;
     }
+    const recovery_generation_config = this._getStrictRecoveryGenerationConfig(generation_config);
+    let best = original;
+    if (recovery_generation_config !== generation_config) {
+      const strict = await this._generateChunkResult(
+        chunk2,
+        recovery_generation_config,
+        return_timestamps,
+        timestamp_begin,
+        hop_length,
+        sampling_rate
+      );
+      best = this._chooseBetterChunkResult(best, strict);
+    }
     if (depth < MAX_HALLUCINATION_DEPTH) {
       const split = await this._splitChunkWithRetry(
         chunk2,
         fullAudio,
-        generation_config,
+        recovery_generation_config,
         return_timestamps,
         timestamp_begin,
         hop_length,
@@ -36321,19 +36659,19 @@ Pipeline {
         audioOffset,
         depth
       );
-      return this._chooseBetterChunkResult(original, split);
+      return this._chooseBetterChunkResult(best, split);
     }
     const padded = await this._generatePaddedChunkResult(
       chunk2,
       fullAudio,
-      generation_config,
+      recovery_generation_config,
       return_timestamps,
       timestamp_begin,
       hop_length,
       sampling_rate,
       audioOffset
     );
-    return this._chooseBetterChunkResult(original, padded);
+    return this._chooseBetterChunkResult(best, padded);
   }
   async _generateChunkResult(chunk2, generation_config, return_timestamps, timestamp_begin, hop_length, sampling_rate) {
     generation_config.num_frames = Math.floor(chunk2.stride[0] / hop_length);
@@ -36396,10 +36734,7 @@ Pipeline {
     return true;
   }
   _shouldRetryChunk(result, chunk_duration_s, logprob_threshold) {
-    const tokens_per_second = result.text_token_count / Math.max(chunk_duration_s, 0.1);
-    const low_text_coverage = tokens_per_second < MIN_HALLUCINATION_TOKENS_PER_SECOND;
-    const low_logprob = result.avg_logprob === null ? result.text_token_count === 0 : result.avg_logprob < logprob_threshold;
-    return low_text_coverage && low_logprob;
+    return this._isSuspiciousChunkResult(result, chunk_duration_s, logprob_threshold);
   }
   _chooseBetterChunkResult(a, b) {
     const pickBetterByScore = (first, second) => {

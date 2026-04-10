@@ -70,9 +70,10 @@ function getThresholds(clipName) {
 // Helper: load page, wait for autorun to finish, return { metrics, results }
 async function runBenchmark(page, clipName) {
   const base = page._baseURL || "http://localhost:8484";
+  const extraQuery = process.env.BENCHMARK_QUERY ? `&${process.env.BENCHMARK_QUERY}` : "";
   const url = clipName
-    ? `${base}/?autorun=true&clip=${encodeURIComponent(clipName)}`
-    : `${base}/?autorun=true`;
+    ? `${base}/?autorun=true&clip=${encodeURIComponent(clipName)}${extraQuery}`
+    : `${base}/?autorun=true${extraQuery}`;
 
   await page.goto(url);
   await page.waitForFunction(() => window.__READY__ === true, null, { timeout: 30_000 });
