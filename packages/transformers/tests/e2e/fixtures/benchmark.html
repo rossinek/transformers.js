@@ -140,6 +140,10 @@
       <button class="btn primary" id="btn-run-all" onclick="runAll()" disabled>Run All Clips</button>
       <button class="btn" id="btn-reset" style="display:none;color:var(--red);border-color:var(--red);" onclick="resetResults()">Reset Results</button>
     </div>
+    <div style="display:flex;gap:12px;align-items:center;margin-left:16px;font-size:0.82rem;">
+      <label style="cursor:pointer;user-select:none;"><input type="checkbox" id="chk-vad" checked> VAD</label>
+      <label style="cursor:pointer;user-select:none;"><input type="checkbox" id="chk-halluc" checked> Halluc. recovery</label>
+    </div>
   </header>
 
   <div class="container">
@@ -383,9 +387,12 @@
     async function transcribeClip(clip) {
       const proc = new AudioProcessor();
       const audio = await proc.processUrl(`/fixtures/${clip.file}`);
-      const vadOpts = { pre_speech_pad_ms: 200, post_speech_pad_ms: 300, min_speech_ms: 150, min_silence_ms: 400, max_merge_gap_ms: 500, preserve_full_audio_if_empty: true };
-      const wr = await state.transcriber(audio, { language: clip.lang, return_timestamps: "word", chunk_length_s: 30, stride_length_s: 5, voice_activity_detection: vadOpts });
-      const sr = await state.transcriber(audio, { language: clip.lang, return_timestamps: true, chunk_length_s: 30, stride_length_s: 5, voice_activity_detection: vadOpts });
+      const useVad = document.getElementById("chk-vad")?.checked ?? true;
+      const useHalluc = document.getElementById("chk-halluc")?.checked ?? true;
+      const vadOpts = useVad ? { pre_speech_pad_ms: 200, post_speech_pad_ms: 300, min_speech_ms: 150, min_silence_ms: 400, max_merge_gap_ms: 500, preserve_full_audio_if_empty: true } : false;
+      const common = { language: clip.lang, chunk_length_s: 30, stride_length_s: 5, voice_activity_detection: vadOpts, hallucination_recovery: useHalluc };
+      const wr = await state.transcriber(audio, { ...common, return_timestamps: "word" });
+      const sr = await state.transcriber(audio, { ...common, return_timestamps: true });
       return {
         word: { text: wr.text, chunks: (wr.chunks || []).map(c => ({ text: c.text, start: c.timestamp?.[0] ?? null, end: c.timestamp?.[1] ?? null })) },
         sentence: { text: sr.text, chunks: (sr.chunks || []).map(c => ({ text: c.text, start: c.timestamp?.[0] ?? null, end: c.timestamp?.[1] ?? null })) },
