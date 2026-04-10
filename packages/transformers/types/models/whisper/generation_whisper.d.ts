@@ -54,6 +54,35 @@ export class WhisperGenerationConfig extends GenerationConfig {
      */
     prompt_ids: number[];
     /**
+     * Optional human-readable prompt text used to bias transcription toward expected names or terms.
+     * This can be converted into `prompt_ids` by the processor/tokenizer.
+     * @type {string|null}
+     */
+    initial_prompt: string | null;
+    /**
+     * Whether prompt text should be reapplied to every sequential Whisper segment.
+     * When `false`, prompt text is only used for the first segment/chunk.
+     * @type {boolean}
+     */
+    carry_initial_prompt: boolean;
+    /**
+     * If the compression ratio of the decoded text rises above this value, treat the decode as failed
+     * and try a fallback attempt.
+     * @type {number|null}
+     */
+    compression_ratio_threshold: number | null;
+    /**
+     * If the probability of the `<|nospeech|>` token is higher than this value and the decode is also
+     * low-confidence, treat the segment as silence.
+     * @type {number|null}
+     */
+    no_speech_threshold: number | null;
+    /**
+     * Whisper `<|nospeech|>` token id. Set by the ASR pipeline when available.
+     * @type {number|null}
+     */
+    no_speech_token_id: number | null;
+    /**
      * Whether the model is multilingual or not.
      * @type {boolean}
      */

@@ -15,7 +15,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      *
      * @param {WhisperGenerationConfig} generation_config
      */
-    _retrieve_init_tokens(generation_config: WhisperGenerationConfig): number[];
+    _retrieve_init_tokens(generation_config: WhisperGenerationConfig, include_prompt_ids?: boolean): number[];
     /**
      * Transcribes or translates log-mel input features to a sequence of auto-regressively generated token ids.
      * @param {import('./generation_whisper.js').WhisperGenerationFunctionParameters} options
@@ -45,6 +45,8 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      * @private
      */
     private _generate_segment;
+    _estimate_no_speech_probability(segment_features: any, init_tokens: any, no_speech_token_id: any): Promise<number>;
+    _estimateCompressionRatio(generated_tokens: any, timestamp_begin: any, eos_token_id: any): number;
     /**
      * Computes how far to advance the seek pointer based on generated tokens.
      * @private

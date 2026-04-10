@@ -24547,6 +24547,25 @@ var WhisperProcessor = class extends Processor {
   static tokenizer_class = AutoTokenizer;
   static feature_extractor_class = AutoFeatureExtractor;
   /**
+   * Converts prompt text into Whisper prompt token ids.
+   * Whisper expects `<|startofprev|>` followed by the prompt text tokens.
+   *
+   * @param {string} text
+   * @returns {number[]}
+   */
+  get_prompt_ids(text) {
+    const prompt = text?.trim();
+    if (!prompt) {
+      return [];
+    }
+    const start_of_prev_id = this.tokenizer?._tokenizer?.token_to_id?.("<|startofprev|>");
+    if (start_of_prev_id == null) {
+      throw new Error("Whisper tokenizer does not define the <|startofprev|> token.");
+    }
+    const prompt_ids = this.tokenizer.encode(` ${prompt}`, { add_special_tokens: false });
+    return [start_of_prev_id, ...prompt_ids];
+  }
+  /**
    * Calls the feature_extractor function with the given audio input.
    * @param {any} audio The audio input to extract features from.
    * @returns {Promise<any>} A Promise that resolves with the extracted features.
@@ -32920,6 +32939,35 @@ var WhisperGenerationConfig = class extends GenerationConfig {
    */
   prompt_ids = null;
   /**
+   * Optional human-readable prompt text used to bias transcription toward expected names or terms.
+   * This can be converted into `prompt_ids` by the processor/tokenizer.
+   * @type {string|null}
+   */
+  initial_prompt = null;
+  /**
+   * Whether prompt text should be reapplied to every sequential Whisper segment.
+   * When `false`, prompt text is only used for the first segment/chunk.
+   * @type {boolean}
+   */
+  carry_initial_prompt = false;
+  /**
+   * If the compression ratio of the decoded text rises above this value, treat the decode as failed
+   * and try a fallback attempt.
+   * @type {number|null}
+   */
+  compression_ratio_threshold = null;
+  /**
+   * If the probability of the `<|nospeech|>` token is higher than this value and the decode is also
+   * low-confidence, treat the segment as silence.
+   * @type {number|null}
+   */
+  no_speech_threshold = null;
+  /**
+   * Whisper `<|nospeech|>` token id. Set by the ASR pipeline when available.
+   * @type {number|null}
+   */
+  no_speech_token_id = null;
+  /**
    * Whether the model is multilingual or not.
    * @type {boolean}
    */
@@ -32968,7 +33016,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
    *
    * @param {WhisperGenerationConfig} generation_config
    */
-  _retrieve_init_tokens(generation_config) {
+  _retrieve_init_tokens(generation_config, include_prompt_ids = true) {
     const init_tokens = [generation_config.decoder_start_token_id];
     let language = generation_config.language;
     const task = generation_config.task;
@@ -32994,7 +33042,17 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       );
       init_tokens.pop();
     }
-    return init_tokens.filter((token) => token != null);
+    const filtered_init_tokens = init_tokens.filter((token) => token != null);
+    if (!include_prompt_ids || !Array.isArray(generation_config.prompt_ids) || generation_config.prompt_ids.length === 0) {
+      return filtered_init_tokens;
+    }
+    const max_target_positions = (
+      /** @type {{ max_target_positions?: number }} */
+      this.config.max_target_positions ?? 448
+    );
+    const max_prompt_length = Math.max(max_target_positions >> 1, 1);
+    const normalized_prompt_ids = generation_config.prompt_ids.map((token) => Number(token)).filter((token) => Number.isInteger(token) && token >= 0).slice(-max_prompt_length);
+    return [...normalized_prompt_ids, ...filtered_init_tokens];
   }
   /**
    * Transcribes or translates log-mel input features to a sequence of auto-regressively generated token ids.
@@ -33015,7 +33073,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     const temperature_is_explicit = kwargs.temperature !== void 0 || generation_config?.temperature !== void 0;
     generation_config = this._prepare_generation_config(generation_config, kwargs);
     generation_config["_temperature_is_explicit"] = temperature_is_explicit;
-    const init_tokens = kwargs.decoder_input_ids ?? this._retrieve_init_tokens(generation_config);
+    const init_tokens = kwargs.decoder_input_ids ?? this._retrieve_init_tokens(generation_config, true);
     if (generation_config.return_timestamps) {
       logits_processor ??= new LogitsProcessorList();
       logits_processor.push(new WhisperTimeStampLogitsProcessor(generation_config, init_tokens));
@@ -33091,7 +33149,9 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     const allTokens = [];
     const allTokenTimestamps = [];
     let accumulated_score = 0;
+    const init_tokens_without_prompt = this._retrieve_init_tokens(generation_config, false);
     while (seek < total_frames) {
+      const segment_init_tokens = seek === 0 || generation_config.carry_initial_prompt ? init_tokens : init_tokens_without_prompt;
       const seek_end = Math.min(seek + num_segment_frames, total_frames);
       const segment_input = input_features.slice(null, null, [seek, seek_end]);
       const segment_frames = segment_input.dims[2];
@@ -33100,16 +33160,23 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         segment_features,
         generation_config,
         logits_processor,
-        init_tokens,
+        init_tokens: segment_init_tokens,
         fallback_temperatures,
         logprob_threshold,
         timestamp_begin,
         eos_token_id,
         return_token_timestamps,
+        no_speech_threshold: generation_config.no_speech_threshold ?? null,
+        compression_ratio_threshold: generation_config.compression_ratio_threshold ?? null,
+        no_speech_token_id: generation_config.no_speech_token_id ?? null,
         seek,
         seek_end,
         input_stride
       });
+      if (outputs?.should_skip) {
+        seek = seek_end;
+        continue;
+      }
       if (generated_tokens.length === 0) {
         break;
       }
@@ -33202,17 +33269,28 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     timestamp_begin,
     eos_token_id,
     return_token_timestamps,
+    no_speech_threshold,
+    compression_ratio_threshold,
+    no_speech_token_id,
     seek,
     seek_end,
     input_stride
   }) {
     let generated_tokens;
     let outputs;
+    let no_speech_prob = null;
     const orig_do_sample = generation_config.do_sample;
     const orig_temperature = generation_config.temperature;
     const orig_top_k = generation_config.top_k;
     const orig_return_dict = generation_config.return_dict_in_generate;
     try {
+      if (no_speech_threshold != null && no_speech_token_id != null) {
+        no_speech_prob = await this._estimate_no_speech_probability(
+          segment_features,
+          init_tokens,
+          no_speech_token_id
+        );
+      }
       const attempts = fallback_temperatures?.length ? fallback_temperatures : [null];
       for (let t_idx = 0; t_idx < attempts.length; ++t_idx) {
         const temperature = attempts[t_idx];
@@ -33246,15 +33324,25 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         generated_tokens = raw_sequence[0].tolist().map(Number).slice(init_tokens.length);
         if (t_idx === attempts.length - 1 || temperature === null) break;
         let needs_fallback = false;
+        let avg_logprob = null;
         if (logprob_threshold !== null && outputs.scores) {
           const total_score = outputs.scores[0] ?? 0;
           const text_token_count = generated_tokens.filter(
             (token) => token < timestamp_begin && token !== eos_token_id
           ).length;
-          const avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
+          avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
           if (avg_logprob < logprob_threshold) {
             needs_fallback = true;
           }
+        }
+        if (compression_ratio_threshold != null && this._estimateCompressionRatio(generated_tokens, timestamp_begin, eos_token_id) > compression_ratio_threshold) {
+          needs_fallback = true;
+        }
+        if (no_speech_threshold != null && no_speech_prob !== null && no_speech_prob > no_speech_threshold && logprob_threshold !== null && avg_logprob !== null && avg_logprob < logprob_threshold) {
+          outputs ??= {};
+          outputs.should_skip = true;
+          generated_tokens = [];
+          break;
         }
         if (!needs_fallback) break;
       }
@@ -33280,6 +33368,68 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       generated_tokens.pop();
     }
     return { generated_tokens, outputs, seek_token_timestamps };
+  }
+  async _estimate_no_speech_probability(segment_features, init_tokens, no_speech_token_id) {
+    const decoder_input_ids = new Tensor2("int64", init_tokens.map(BigInt), [1, init_tokens.length]);
+    const outputs = await this.forward({
+      input_features: segment_features,
+      decoder_input_ids
+    });
+    const logits = outputs.logits.slice(null, -1, null).to("float32");
+    const data = (
+      /** @type {Float32Array} */
+      logits.data
+    );
+    let maxLogit = -Infinity;
+    for (const value of data) {
+      if (value > maxLogit) {
+        maxLogit = value;
+      }
+    }
+    let total = 0;
+    let noSpeech = 0;
+    for (let i = 0; i < data.length; ++i) {
+      const prob = Math.exp(data[i] - maxLogit);
+      total += prob;
+      if (i === no_speech_token_id) {
+        noSpeech = prob;
+      }
+    }
+    if (logits.location === "gpu-buffer") {
+      logits.dispose();
+    }
+    for (const tensor of Object.values(outputs)) {
+      if (tensor?.location === "gpu-buffer") {
+        tensor.dispose();
+      }
+    }
+    return total > 0 ? noSpeech / total : null;
+  }
+  _estimateCompressionRatio(generated_tokens, timestamp_begin, eos_token_id) {
+    const text_tokens = generated_tokens.filter((token) => token < timestamp_begin && token !== eos_token_id);
+    if (text_tokens.length < 8) {
+      return 0;
+    }
+    const serialized = text_tokens.join(",");
+    const dictionary = /* @__PURE__ */ new Map();
+    let phrase = "";
+    let compressedLength = 0;
+    for (const symbol of serialized) {
+      const candidate = phrase + symbol;
+      if (dictionary.has(candidate)) {
+        phrase = candidate;
+        continue;
+      }
+      if (phrase) {
+        compressedLength += 1;
+      }
+      dictionary.set(candidate, dictionary.size + 1);
+      phrase = symbol;
+    }
+    if (phrase) {
+      compressedLength += 1;
+    }
+    return compressedLength > 0 ? serialized.length / compressedLength : 0;
   }
   /**
    * Computes how far to advance the seek pointer based on generated tokens.
@@ -35241,6 +35391,17 @@ Pipeline {
     const generation_config = { ...kwargs };
     generation_config["hallucination_recovery"] = hallucination_recovery;
     delete generation_config["voice_activity_detection"];
+    if (generation_config.initial_prompt && generation_config.prompt_ids == null) {
+      generation_config.prompt_ids = /** @type {{ get_prompt_ids?: (text: string) => number[] }} */
+      this.processor.get_prompt_ids?.(generation_config.initial_prompt) ?? null;
+    }
+    delete generation_config["initial_prompt"];
+    if (generation_config.no_speech_threshold != null) {
+      const no_speech_token_id = this.tokenizer?._tokenizer?.token_to_id?.("<|nospeech|>");
+      if (no_speech_token_id != null) {
+        generation_config["no_speech_token_id"] = no_speech_token_id;
+      }
+    }
     if (return_timestamps === "word") {
       generation_config["return_token_timestamps"] = true;
       generation_config["return_timestamps"] = true;
@@ -35348,12 +35509,16 @@ Pipeline {
     const chunkJump = chunk_length_s > 0 ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6) : 0;
     for (let ci = 0; ci < chunks.length; ++ci) {
       const audioOffset = ci * chunkJump;
+      const chunk_generation_config = ci === 0 || generation_config.carry_initial_prompt || generation_config.prompt_ids == null ? generation_config : {
+        ...generation_config,
+        prompt_ids: null
+      };
       let result;
       if (hallucination_recovery) {
         result = await this._processChunkWithRetry(
           chunks[ci],
           audio,
-          generation_config,
+          chunk_generation_config,
           return_timestamps,
           timestamp_begin,
           hop_length,
@@ -35363,7 +35528,7 @@ Pipeline {
       } else {
         result = await this._generateChunkResult(
           chunks[ci],
-          generation_config,
+          chunk_generation_config,
           return_timestamps,
           timestamp_begin,
           hop_length,
@@ -35376,7 +35541,7 @@ Pipeline {
           result,
           audioOffset / sampling_rate,
           (audioOffset + chunks[ci].stride[0]) / sampling_rate,
-          generation_config.logprob_threshold ?? -1
+          chunk_generation_config.logprob_threshold ?? -1
         )
       );
     }

@@ -21,6 +21,11 @@ declare const AutomaticSpeechRecognitionPipeline_base: new (options: TextAudioPi
  * @property {number} [stride_length_s] The length of overlap between consecutive audio chunks in seconds. If not provided, defaults to `chunk_length_s / 6`.
  * @property {boolean} [force_full_sequences] Whether to force outputting full sequences or not. Default is `false`.
  * @property {boolean} [hallucination_recovery] Whether to enable best-effort Whisper hallucination recovery. Default is `true`.
+ * @property {string} [initial_prompt] Optional prompt text used to bias Whisper toward expected names or terms.
+ * @property {number[]} [prompt_ids] Whisper prompt token ids, typically produced from `initial_prompt`.
+ * @property {boolean} [carry_initial_prompt] Whether prompt text should be reapplied to every sequential Whisper segment. Default is `false`.
+ * @property {number} [compression_ratio_threshold] Treat overly repetitive decodes as failed and retry with fallback.
+ * @property {number} [no_speech_threshold] Treat a low-confidence segment with high `<|nospeech|>` probability as silence.
  * @property {string} [language] The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
  * @property {string} [task] The task to perform. Default is `null`, meaning it should be auto-detected.
  * @property {number} [num_frames] The number of frames in the input audio.
@@ -313,6 +318,26 @@ export type AutomaticSpeechRecognitionSpecificParams = {
      * Whether to enable best-effort Whisper hallucination recovery. Default is `true`.
      */
     hallucination_recovery?: boolean;
+    /**
+     * Optional prompt text used to bias Whisper toward expected names or terms.
+     */
+    initial_prompt?: string;
+    /**
+     * Whisper prompt token ids, typically produced from `initial_prompt`.
+     */
+    prompt_ids?: number[];
+    /**
+     * Whether prompt text should be reapplied to every sequential Whisper segment. Default is `false`.
+     */
+    carry_initial_prompt?: boolean;
+    /**
+     * Treat overly repetitive decodes as failed and retry with fallback.
+     */
+    compression_ratio_threshold?: number;
+    /**
+     * Treat a low-confidence segment with high `<|nospeech|>` probability as silence.
+     */
+    no_speech_threshold?: number;
     /**
      * The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
      */

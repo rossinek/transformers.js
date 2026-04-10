@@ -43,7 +43,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      *
      * @param {WhisperGenerationConfig} generation_config
      */
-    _retrieve_init_tokens(generation_config) {
+    _retrieve_init_tokens(generation_config, include_prompt_ids = true) {
         // prefix tokens are of the form:
         //  - Multilingual: <|startoftranscript|> <|lang_id|> <|task|> [<|notimestamps|>]
         //  - English-only: <|startoftranscript|> [<|notimestamps|>]
@@ -92,8 +92,18 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             init_tokens.pop();
         }
 
-        // let's make sure we don't pass `null` tokens as prompt tokens
-        return init_tokens.filter((token) => token != null);
+        const filtered_init_tokens = init_tokens.filter((token) => token != null);
+        if (!include_prompt_ids || !Array.isArray(generation_config.prompt_ids) || generation_config.prompt_ids.length === 0) {
+            return filtered_init_tokens;
+        }
+
+        const max_target_positions = /** @type {{ max_target_positions?: number }} */ (this.config).max_target_positions ?? 448;
+        const max_prompt_length = Math.max(max_target_positions >> 1, 1);
+        const normalized_prompt_ids = generation_config.prompt_ids
+            .map((token) => Number(token))
+            .filter((token) => Number.isInteger(token) && token >= 0)
+            .slice(-max_prompt_length);
+        return [...normalized_prompt_ids, ...filtered_init_tokens];
     }
 
     /**
@@ -119,7 +129,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         generation_config = this._prepare_generation_config(generation_config, kwargs);
         generation_config['_temperature_is_explicit'] = temperature_is_explicit;
 
-        const init_tokens = kwargs.decoder_input_ids ?? this._retrieve_init_tokens(generation_config);
+        const init_tokens = kwargs.decoder_input_ids ?? this._retrieve_init_tokens(generation_config, true);
 
         if (generation_config.return_timestamps) {
             logits_processor ??= new LogitsProcessorList();
@@ -219,8 +229,13 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         const allTokens = [];
         const allTokenTimestamps = [];
         let accumulated_score = 0;
+        const init_tokens_without_prompt = this._retrieve_init_tokens(generation_config, false);
 
         while (seek < total_frames) {
+            const segment_init_tokens =
+                seek === 0 || generation_config.carry_initial_prompt
+                    ? init_tokens
+                    : init_tokens_without_prompt;
             // Slice input features for this segment
             const seek_end = Math.min(seek + num_segment_frames, total_frames);
             const segment_input = input_features.slice(null, null, [seek, seek_end]);
@@ -233,16 +248,24 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 segment_features,
                 generation_config,
                 logits_processor,
-                init_tokens,
+                init_tokens: segment_init_tokens,
                 fallback_temperatures,
                 logprob_threshold,
                 timestamp_begin,
                 eos_token_id,
                 return_token_timestamps,
+                no_speech_threshold: generation_config.no_speech_threshold ?? null,
+                compression_ratio_threshold: generation_config.compression_ratio_threshold ?? null,
+                no_speech_token_id: generation_config.no_speech_token_id ?? null,
                 seek,
                 seek_end,
                 input_stride,
             });
+
+            if (outputs?.should_skip) {
+                seek = seek_end;
+                continue;
+            }
 
             if (generated_tokens.length === 0) {
                 // No tokens generated — skip the rest of the audio
@@ -348,12 +371,16 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         timestamp_begin,
         eos_token_id,
         return_token_timestamps,
+        no_speech_threshold,
+        compression_ratio_threshold,
+        no_speech_token_id,
         seek,
         seek_end,
         input_stride,
     }) {
         let generated_tokens;
         let outputs;
+        let no_speech_prob = null;
 
         // Save original config values to restore after temperature fallback
         const orig_do_sample = generation_config.do_sample;
@@ -362,6 +389,13 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         const orig_return_dict = generation_config.return_dict_in_generate;
 
         try {
+            if (no_speech_threshold != null && no_speech_token_id != null) {
+                no_speech_prob = await this._estimate_no_speech_probability(
+                    segment_features,
+                    init_tokens,
+                    no_speech_token_id,
+                );
+            }
             const attempts = fallback_temperatures?.length ? fallback_temperatures : [null];
             for (let t_idx = 0; t_idx < attempts.length; ++t_idx) {
                 const temperature = attempts[t_idx];
@@ -409,15 +443,38 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
 
                 // Quality check: average log probability (matches Python's logprob_threshold)
                 let needs_fallback = false;
+                let avg_logprob = null;
                 if (logprob_threshold !== null && outputs.scores) {
                     const total_score = outputs.scores[0] ?? 0;
                     const text_token_count = generated_tokens.filter(
                         (token) => token < timestamp_begin && token !== eos_token_id,
                     ).length;
-                    const avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
+                    avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
                     if (avg_logprob < logprob_threshold) {
                         needs_fallback = true;
                     }
+                }
+
+                if (
+                    compression_ratio_threshold != null &&
+                    this._estimateCompressionRatio(generated_tokens, timestamp_begin, eos_token_id) >
+                        compression_ratio_threshold
+                ) {
+                    needs_fallback = true;
+                }
+
+                if (
+                    no_speech_threshold != null &&
+                    no_speech_prob !== null &&
+                    no_speech_prob > no_speech_threshold &&
+                    logprob_threshold !== null &&
+                    avg_logprob !== null &&
+                    avg_logprob < logprob_threshold
+                ) {
+                    outputs ??= {};
+                    outputs.should_skip = true;
+                    generated_tokens = [];
+                    break;
                 }
 
                 if (!needs_fallback) break;
@@ -453,6 +510,75 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         }
 
         return { generated_tokens, outputs, seek_token_timestamps };
+    }
+
+    async _estimate_no_speech_probability(segment_features, init_tokens, no_speech_token_id) {
+        const decoder_input_ids = new Tensor('int64', init_tokens.map(BigInt), [1, init_tokens.length]);
+        const outputs = await this.forward({
+            input_features: segment_features,
+            decoder_input_ids,
+        });
+        const logits = outputs.logits.slice(null, -1, null).to('float32');
+        const data = /** @type {Float32Array} */ (logits.data);
+        let maxLogit = -Infinity;
+        for (const value of data) {
+            if (value > maxLogit) {
+                maxLogit = value;
+            }
+        }
+
+        let total = 0;
+        let noSpeech = 0;
+        for (let i = 0; i < data.length; ++i) {
+            const prob = Math.exp(data[i] - maxLogit);
+            total += prob;
+            if (i === no_speech_token_id) {
+                noSpeech = prob;
+            }
+        }
+
+        if (logits.location === 'gpu-buffer') {
+            logits.dispose();
+        }
+        for (const tensor of Object.values(outputs)) {
+            if (tensor?.location === 'gpu-buffer') {
+                tensor.dispose();
+            }
+        }
+
+        return total > 0 ? noSpeech / total : null;
+    }
+
+    _estimateCompressionRatio(generated_tokens, timestamp_begin, eos_token_id) {
+        const text_tokens = generated_tokens.filter((token) => token < timestamp_begin && token !== eos_token_id);
+        if (text_tokens.length < 8) {
+            return 0;
+        }
+
+        const serialized = text_tokens.join(',');
+        const dictionary = new Map();
+        let phrase = '';
+        let compressedLength = 0;
+
+        for (const symbol of serialized) {
+            const candidate = phrase + symbol;
+            if (dictionary.has(candidate)) {
+                phrase = candidate;
+                continue;
+            }
+
+            if (phrase) {
+                compressedLength += 1;
+            }
+            dictionary.set(candidate, dictionary.size + 1);
+            phrase = symbol;
+        }
+
+        if (phrase) {
+            compressedLength += 1;
+        }
+
+        return compressedLength > 0 ? serialized.length / compressedLength : 0;
     }
 
     /**

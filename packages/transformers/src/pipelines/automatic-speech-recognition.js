@@ -52,6 +52,11 @@ function normalizeAlignmentWord(text) {
  * @property {number} [stride_length_s] The length of overlap between consecutive audio chunks in seconds. If not provided, defaults to `chunk_length_s / 6`.
  * @property {boolean} [force_full_sequences] Whether to force outputting full sequences or not. Default is `false`.
  * @property {boolean} [hallucination_recovery] Whether to enable best-effort Whisper hallucination recovery. Default is `true`.
+ * @property {string} [initial_prompt] Optional prompt text used to bias Whisper toward expected names or terms.
+ * @property {number[]} [prompt_ids] Whisper prompt token ids, typically produced from `initial_prompt`.
+ * @property {boolean} [carry_initial_prompt] Whether prompt text should be reapplied to every sequential Whisper segment. Default is `false`.
+ * @property {number} [compression_ratio_threshold] Treat overly repetitive decodes as failed and retry with fallback.
+ * @property {number} [no_speech_threshold] Treat a low-confidence segment with high `<|nospeech|>` probability as silence.
  * @property {string} [language] The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known.
  * @property {string} [task] The task to perform. Default is `null`, meaning it should be auto-detected.
  * @property {number} [num_frames] The number of frames in the input audio.
@@ -233,6 +238,18 @@ export class AutomaticSpeechRecognitionPipeline
         const generation_config = { ...kwargs };
         generation_config['hallucination_recovery'] = hallucination_recovery;
         delete generation_config['voice_activity_detection'];
+        if (generation_config.initial_prompt && generation_config.prompt_ids == null) {
+            generation_config.prompt_ids = /** @type {{ get_prompt_ids?: (text: string) => number[] }} */ (this.processor)
+                .get_prompt_ids?.(generation_config.initial_prompt) ?? null;
+        }
+        delete generation_config['initial_prompt'];
+
+        if (generation_config.no_speech_threshold != null) {
+            const no_speech_token_id = this.tokenizer?._tokenizer?.token_to_id?.('<|nospeech|>');
+            if (no_speech_token_id != null) {
+                generation_config['no_speech_token_id'] = no_speech_token_id;
+            }
+        }
         if (return_timestamps === 'word') {
             generation_config['return_token_timestamps'] = true;
             generation_config['return_timestamps'] = true;
@@ -357,13 +374,20 @@ export class AutomaticSpeechRecognitionPipeline
 
         for (let ci = 0; ci < chunks.length; ++ci) {
             const audioOffset = ci * chunkJump;
+            const chunk_generation_config =
+                ci === 0 || generation_config.carry_initial_prompt || generation_config.prompt_ids == null
+                    ? generation_config
+                    : {
+                          ...generation_config,
+                          prompt_ids: null,
+                      };
             let result;
 
             if (hallucination_recovery) {
                 result = await this._processChunkWithRetry(
                     chunks[ci],
                     audio,
-                    generation_config,
+                    chunk_generation_config,
                     return_timestamps,
                     timestamp_begin,
                     hop_length,
@@ -373,7 +397,7 @@ export class AutomaticSpeechRecognitionPipeline
             } else {
                 result = await this._generateChunkResult(
                     chunks[ci],
-                    generation_config,
+                    chunk_generation_config,
                     return_timestamps,
                     timestamp_begin,
                     hop_length,
@@ -387,7 +411,7 @@ export class AutomaticSpeechRecognitionPipeline
                     result,
                     audioOffset / sampling_rate,
                     (audioOffset + chunks[ci].stride[0]) / sampling_rate,
-                    generation_config.logprob_threshold ?? -1.0,
+                    chunk_generation_config.logprob_threshold ?? -1.0,
                 ),
             );
         }
