@@ -226,7 +226,7 @@ export class AutomaticSpeechRecognitionPipeline
         const return_timestamps = kwargs.return_timestamps ?? false;
         const chunk_length_s = kwargs.chunk_length_s ?? 0;
         const force_full_sequences = kwargs.force_full_sequences ?? false;
-        const hallucination_recovery = kwargs.hallucination_recovery ?? true;
+        const hallucination_recovery = kwargs.hallucination_recovery ?? false;
         const voice_activity_detection = kwargs.voice_activity_detection ?? false;
         let stride_length_s = kwargs.stride_length_s ?? null;
 

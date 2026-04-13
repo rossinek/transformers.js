@@ -7,7 +7,7 @@ export class WhisperGenerationConfig extends GenerationConfig {
      * seek loop and ASR pipeline chunk recovery.
      * @type {boolean}
      */
-    hallucination_recovery = true;
+    hallucination_recovery = false;
 
     /**
      * Whether to return the timestamps with the text. This enables the `WhisperTimestampsLogitsProcessor`.
