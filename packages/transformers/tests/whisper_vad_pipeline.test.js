@@ -101,6 +101,7 @@ describe("Whisper VAD pipeline integration", () => {
     mockRunVADWeb.mockResolvedValue([
       { start_ms: 1000, end_ms: 1500 },
       { start_ms: 4000, end_ms: 4500 },
+      { start_ms: 7000, end_ms: 7500 },
     ]);
 
     const pipe = createFakePipeline([
@@ -125,7 +126,7 @@ describe("Whisper VAD pipeline integration", () => {
     });
 
     expect(mockRunVADWeb).toHaveBeenCalledTimes(1);
-    expect(pipe.processor.mock.calls[0][0]).toHaveLength(1000);
+    expect(pipe.processor.mock.calls[0][0]).toHaveLength(1500);
     expect(output).toEqual({
       text: "first second",
       chunks: [
@@ -155,6 +156,47 @@ describe("Whisper VAD pipeline integration", () => {
     expect(output).toEqual({
       text: "hello",
       chunks: [{ text: "hello", timestamp: [1.1, 1.6] }],
+    });
+  });
+
+  it("preserves split compound word chunks in word mode", async () => {
+    const pipe = createFakePipeline();
+    pipe.tokenizer._decode_asr = jest
+      .fn()
+      .mockReturnValueOnce([
+        " C++ high-level",
+        {
+          chunks: [
+            { text: " C", timestamp: [0.2, 0.4] },
+            { text: "++", timestamp: [0.4, 0.5] },
+            { text: " high", timestamp: [0.6, 0.9] },
+            { text: "-level", timestamp: [0.9, 1.1] },
+          ],
+        },
+      ])
+      .mockReturnValueOnce([
+        " C high-level",
+        {
+          chunks: [],
+        },
+      ]);
+
+    const audio = new Float32Array(5000).fill(1);
+    const output = await pipe._call_whisper(audio, {
+      return_timestamps: "word",
+      hallucination_recovery: false,
+      voice_activity_detection: false,
+    });
+
+    expect(pipe.tokenizer._decode_asr).toHaveBeenCalledTimes(1);
+    expect(output).toEqual({
+      text: " C++ high-level",
+      chunks: [
+        { text: " C", timestamp: [0.2, 0.4] },
+        { text: "++", timestamp: [0.4, 0.5] },
+        { text: " high", timestamp: [0.6, 0.9] },
+        { text: "-level", timestamp: [0.9, 1.1] },
+      ],
     });
   });
 

@@ -35336,10 +35336,6 @@ var MIN_VAD_REMOVED_GAP_S = 8;
 var MIN_VAD_REMOVED_GAP_TOTAL_S = 12;
 var MIN_VAD_REMOVED_GAP_RATIO = 0.2;
 var MAX_SEGMENTED_VAD_SEGMENTS = 2;
-var EDGE_PUNCTUATION_REGEX = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
-function normalizeAlignmentWord(text) {
-  return text.toLowerCase().replace(EDGE_PUNCTUATION_REGEX, "");
-}
 var AutomaticSpeechRecognitionPipeline = class extends /** @type {new (options: TextAudioPipelineConstructorArgs) => AutomaticSpeechRecognitionPipelineType} */
 Pipeline {
   async _call(audio, kwargs = {}) {
@@ -35596,15 +35592,6 @@ Pipeline {
       force_full_sequences
     });
     const output = { text: full_text, ...optional };
-    if (return_timestamps === "word") {
-      const [sentence_text] = this.tokenizer._decode_asr(processedChunks, {
-        time_precision,
-        return_timestamps: true,
-        force_full_sequences
-      });
-      this._filterWordOutputToSentenceText(output, sentence_text);
-      output.text = sentence_text.trim();
-    }
     return {
       output,
       analyses
@@ -35672,47 +35659,6 @@ Pipeline {
       text,
       chunks: combinedChunks ?? []
     };
-  }
-  _filterWordOutputToSentenceText(output, sentence_text) {
-    if (!Array.isArray(output?.chunks) || typeof sentence_text !== "string" || sentence_text.trim().length === 0) {
-      return output;
-    }
-    const expected_words = sentence_text.match(/\S+/g) ?? [];
-    if (expected_words.length === 0) {
-      return output;
-    }
-    const candidate_words = output.chunks;
-    const normalized_expected = expected_words.map(normalizeAlignmentWord).filter(Boolean);
-    const normalized_candidates = candidate_words.map((chunk2) => normalizeAlignmentWord(chunk2.text ?? ""));
-    if (normalized_expected.length === 0 || normalized_candidates.every((word) => !word)) {
-      return output;
-    }
-    const rows = normalized_candidates.length;
-    const cols = normalized_expected.length;
-    const dp = Array.from({ length: rows + 1 }, () => new Uint16Array(cols + 1));
-    for (let i2 = rows - 1; i2 >= 0; --i2) {
-      for (let j2 = cols - 1; j2 >= 0; --j2) {
-        dp[i2][j2] = normalized_candidates[i2] !== "" && normalized_candidates[i2] === normalized_expected[j2] ? dp[i2 + 1][j2 + 1] + 1 : Math.max(dp[i2 + 1][j2], dp[i2][j2 + 1]);
-      }
-    }
-    const matched = [];
-    let i = 0;
-    let j = 0;
-    while (i < rows && j < cols) {
-      if (normalized_candidates[i] !== "" && normalized_candidates[i] === normalized_expected[j]) {
-        matched.push(candidate_words[i]);
-        ++i;
-        ++j;
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        ++i;
-      } else {
-        ++j;
-      }
-    }
-    if (matched.length > 0) {
-      output.chunks = matched;
-    }
-    return output;
   }
   _getStrictRecoveryGenerationConfig(generation_config) {
     if (generation_config.logprob_threshold != null) {

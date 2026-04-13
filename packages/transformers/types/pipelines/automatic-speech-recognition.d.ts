@@ -206,7 +206,6 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         text: any;
         chunks: any;
     };
-    _filterWordOutputToSentenceText(output: any, sentence_text: any): any;
     _getStrictRecoveryGenerationConfig(generation_config: any): any;
     _createWhisperChunks(audio: any, chunk_length_s: any, stride_length_s: any, sampling_rate: any): Promise<{
         stride: number[];
