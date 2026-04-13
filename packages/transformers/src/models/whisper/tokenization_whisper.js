@@ -239,11 +239,12 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     current_tokens.push(token);
 
                     if (token_timestamps) {
-                        let start_time = round(token_timestamps[i] + time_offset, 2);
+                        const start_index = Math.max(i - 1, 0);
+                        let start_time = round(token_timestamps[start_index] + time_offset, 2);
 
                         let end_time;
-                        if (i + 1 < token_timestamps.length) {
-                            end_time = round(token_timestamps[i + 1] + time_offset, 2);
+                        if (i < token_timestamps.length) {
+                            end_time = round(token_timestamps[i] + time_offset, 2);
 
                             // Do not allow punctuation-only tokens to have a duration.
                             // This prevents long pauses from messing up the timestamps.

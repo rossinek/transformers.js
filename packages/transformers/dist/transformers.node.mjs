@@ -17999,10 +17999,11 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
         } else {
           current_tokens.push(token);
           if (token_timestamps) {
-            let start_time = round(token_timestamps[i] + time_offset, 2);
+            const start_index = Math.max(i - 1, 0);
+            let start_time = round(token_timestamps[start_index] + time_offset, 2);
             let end_time;
-            if (i + 1 < token_timestamps.length) {
-              end_time = round(token_timestamps[i + 1] + time_offset, 2);
+            if (i < token_timestamps.length) {
+              end_time = round(token_timestamps[i] + time_offset, 2);
               const decoded_text = this.decode([token]);
               if (PUNCTUATION_ONLY_REGEX.test(decoded_text)) {
                 end_time = round(Math.min(start_time + time_precision, end_time), 2);
@@ -33149,6 +33150,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     const allTokens = [];
     const allTokenTimestamps = [];
     let accumulated_score = 0;
+    let lastTokenBoundary = 0;
     const init_tokens_without_prompt = this._retrieve_init_tokens(generation_config, false);
     while (seek < total_frames) {
       const segment_init_tokens = seek === 0 || generation_config.carry_initial_prompt ? init_tokens : init_tokens_without_prompt;
@@ -33196,6 +33198,11 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       allTokens.push(...generated_tokens.slice(0, tokens_to_keep));
       if (seek_token_timestamps) {
         allTokenTimestamps.push(...seek_token_timestamps.slice(0, tokens_to_keep));
+        if (tokens_to_keep < seek_token_timestamps.length) {
+          lastTokenBoundary = seek_token_timestamps[tokens_to_keep];
+        } else if (seek_token_timestamps.length > 0) {
+          lastTokenBoundary = seek_token_timestamps.at(-1);
+        }
       }
       accumulated_score += outputs?.scores?.[0] ?? 0;
       seek += segment_offset;
@@ -33206,7 +33213,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     if (return_token_timestamps || generation_config.return_dict_in_generate) {
       const output = { sequences };
       if (return_token_timestamps) {
-        const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, 0];
+        const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, lastTokenBoundary];
         output["token_timestamps"] = new Tensor2("float32", new Float32Array(full_timestamps), [
           1,
           full_timestamps.length

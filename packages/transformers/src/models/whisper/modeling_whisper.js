@@ -229,6 +229,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         const allTokens = [];
         const allTokenTimestamps = [];
         let accumulated_score = 0;
+        let lastTokenBoundary = 0;
         const init_tokens_without_prompt = this._retrieve_init_tokens(generation_config, false);
 
         while (seek < total_frames) {
@@ -292,6 +293,11 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             allTokens.push(...generated_tokens.slice(0, tokens_to_keep));
             if (seek_token_timestamps) {
                 allTokenTimestamps.push(...seek_token_timestamps.slice(0, tokens_to_keep));
+                if (tokens_to_keep < seek_token_timestamps.length) {
+                    lastTokenBoundary = seek_token_timestamps[tokens_to_keep];
+                } else if (seek_token_timestamps.length > 0) {
+                    lastTokenBoundary = seek_token_timestamps.at(-1);
+                }
             }
             accumulated_score += outputs?.scores?.[0] ?? 0;
             seek += segment_offset;
@@ -307,7 +313,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             const output = { sequences };
 
             if (return_token_timestamps) {
-                const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, 0];
+                const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, lastTokenBoundary];
                 output['token_timestamps'] = new Tensor('float32', new Float32Array(full_timestamps), [
                     1,
                     full_timestamps.length,
