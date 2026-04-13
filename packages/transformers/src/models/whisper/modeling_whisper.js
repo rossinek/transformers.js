@@ -493,6 +493,26 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             generation_config.return_dict_in_generate = orig_return_dict;
         }
 
+        // Final no-speech check (runs even after exhausting all temperatures)
+        if (
+            no_speech_threshold != null &&
+            no_speech_prob !== null &&
+            no_speech_prob > no_speech_threshold &&
+            logprob_threshold !== null &&
+            generated_tokens.length > 0
+        ) {
+            const total_score = outputs?.scores?.[0] ?? 0;
+            const text_token_count = generated_tokens.filter(
+                (token) => token < timestamp_begin && token !== eos_token_id,
+            ).length;
+            const avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
+            if (avg_logprob < logprob_threshold) {
+                outputs ??= {};
+                outputs.should_skip = true;
+                generated_tokens = [];
+            }
+        }
+
         // Extract token-level timestamps if needed
         let seek_token_timestamps = null;
         if (return_token_timestamps && outputs.cross_attentions) {

@@ -21113,7 +21113,7 @@ var GreedySampler = class extends LogitsSampler {
     for (let i = 0; i < data.length; ++i) {
       sumExp += Math.exp(data[i] - maxVal);
     }
-    const logprob = maxVal - maxVal - Math.log(sumExp);
+    const logprob = -Math.log(sumExp);
     return [[BigInt(argmax), logprob]];
   }
 };
@@ -27927,6 +27927,18 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       generation_config.top_k = orig_top_k;
       generation_config.return_dict_in_generate = orig_return_dict;
     }
+    if (no_speech_threshold != null && no_speech_prob !== null && no_speech_prob > no_speech_threshold && logprob_threshold !== null && generated_tokens.length > 0) {
+      const total_score = outputs?.scores?.[0] ?? 0;
+      const text_token_count = generated_tokens.filter(
+        (token) => token < timestamp_begin && token !== eos_token_id
+      ).length;
+      const avg_logprob = text_token_count > 0 ? total_score / text_token_count : -Infinity;
+      if (avg_logprob < logprob_threshold) {
+        outputs ??= {};
+        outputs.should_skip = true;
+        generated_tokens = [];
+      }
+    }
     let seek_token_timestamps = null;
     if (return_token_timestamps && outputs.cross_attentions) {
       outputs["token_timestamps"] = this._extract_token_timestamps(
@@ -29725,7 +29737,7 @@ function remapCompactTimestamp(compact_time_s, segments, boundary = "start") {
   }
   const lastSegment = segments[segments.length - 1];
   if (compact_time_s >= lastSegment.compact_end_s - EPSILON2) {
-    return boundary === "end" ? lastSegment.original_end_s : lastSegment.original_end_s;
+    return lastSegment.original_end_s;
   }
   for (let i = 0; i < segments.length; ++i) {
     const segment = segments[i];

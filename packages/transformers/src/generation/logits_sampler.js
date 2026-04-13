@@ -122,7 +122,7 @@ class GreedySampler extends LogitsSampler {
         for (let i = 0; i < data.length; ++i) {
             sumExp += Math.exp(data[i] - maxVal);
         }
-        const logprob = maxVal - maxVal - Math.log(sumExp); // = -log(sumExp)
+        const logprob = -Math.log(sumExp);
 
         return [[BigInt(argmax), logprob]];
     }

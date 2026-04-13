@@ -35,7 +35,7 @@ export function remapCompactTimestamp(compact_time_s, segments, boundary = 'star
 
     const lastSegment = segments[segments.length - 1];
     if (compact_time_s >= lastSegment.compact_end_s - EPSILON) {
-        return boundary === 'end' ? lastSegment.original_end_s : lastSegment.original_end_s;
+        return lastSegment.original_end_s;
     }
 
     for (let i = 0; i < segments.length; ++i) {
