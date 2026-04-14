@@ -819,6 +819,12 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 refined_times.push(meanFrame * time_precision);
             }
 
+            // Enforce monotonicity — attention-weighted means can land out of
+            // order when attention distributions overlap between adjacent tokens.
+            for (let tok = 1; tok < refined_times.length; ++tok) {
+                refined_times[tok] = Math.max(refined_times[tok], refined_times[tok - 1]);
+            }
+
             // Pad with num_input_ids zeros at the start (for prefix tokens),
             // then refined timestamps, then duplicate last value (for eos token)
             const padded = new Array(num_input_ids).fill(0);

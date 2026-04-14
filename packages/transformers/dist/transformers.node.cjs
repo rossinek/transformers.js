@@ -34522,6 +34522,9 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         const meanFrame = sumWeight > 0 ? weightedSum / sumWeight : (onset + offset) / 2;
         refined_times.push(meanFrame * time_precision);
       }
+      for (let tok = 1; tok < refined_times.length; ++tok) {
+        refined_times[tok] = Math.max(refined_times[tok], refined_times[tok - 1]);
+      }
       const padded = new Array(num_input_ids).fill(0);
       padded.push(...refined_times);
       if (refined_times.length > 0) {
