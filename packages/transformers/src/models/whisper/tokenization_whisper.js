@@ -208,6 +208,25 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                                     last_language,
                                 );
 
+                                // Drop words from compressed sentences in stride regions.
+                                // The model sometimes outputs many tokens between two
+                                // close timestamp tokens — DTW places those tokens at
+                                // their true audio position (much later), so word
+                                // timestamps span far more time than the chunk duration.
+                                if (
+                                    chunk.words.length > 1 &&
+                                    chunk.timestamp[0] !== null &&
+                                    chunk.timestamp[1] !== null
+                                ) {
+                                    const chunkDuration = chunk.timestamp[1] - chunk.timestamp[0];
+                                    const wordSpan = chunk.words.at(-1).timestamp[1] - chunk.words[0].timestamp[0];
+                                    if (wordSpan > Math.max(chunkDuration * 3, 0.5)) {
+                                        chunk.words = chunk.words.filter(
+                                            (word) => word.timestamp[0] <= chunk.timestamp[1],
+                                        );
+                                    }
+                                }
+
                                 // Cap word end timestamps to the chunk's end timestamp,
                                 // but only if it wouldn't create an inverted range (end < start)
                                 if (chunk.words.length > 0 && chunk.timestamp[1] !== null) {
@@ -364,23 +383,33 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                 }
 
                 // Remove duplicate words at chunk boundaries. Stride overlap
-                // can produce the same word twice with nearly identical
-                // timestamps when the merge algorithm can't match tokens
-                // (different BPE encoding across chunks). We detect consecutive
-                // words with the same normalized text and overlapping time
-                // ranges, keeping the first occurrence.
+                // can produce the same word twice with overlapping timestamps
+                // when the merge algorithm can't match tokens (different BPE
+                // encoding across chunks). Duplicates may not be consecutive
+                // because intervening words from the other chunk can appear
+                // between them. We scan backwards and look within a time
+                // window for same-text words with overlapping time ranges.
                 for (let i = new_chunks.length - 1; i > 0; --i) {
-                    const prev = new_chunks[i - 1];
                     const curr = new_chunks[i];
-                    if (
-                        prev.text.trim().toLowerCase() === curr.text.trim().toLowerCase() &&
-                        curr.timestamp[0] <= prev.timestamp[1] + TIMESTAMP_MERGE_TOLERANCE
-                    ) {
-                        // Keep the one with the wider span (more likely from the clean region)
-                        if (prev.timestamp[1] - prev.timestamp[0] >= curr.timestamp[1] - curr.timestamp[0]) {
-                            new_chunks.splice(i, 1);
-                        } else {
-                            new_chunks.splice(i - 1, 1);
+                    const currText = curr.text.trim().toLowerCase();
+                    for (let j = i - 1; j >= 0; --j) {
+                        // Only look within a reasonable time window
+                        if (curr.timestamp[0] - new_chunks[j].timestamp[0] > 5.0) break;
+                        const prev = new_chunks[j];
+                        if (
+                            prev.text.trim().toLowerCase() === currText &&
+                            curr.timestamp[0] < prev.timestamp[1] + TIMESTAMP_MERGE_TOLERANCE
+                        ) {
+                            // Overlapping duplicate — remove the shorter one
+                            const prevDur = prev.timestamp[1] - prev.timestamp[0];
+                            const currDur = curr.timestamp[1] - curr.timestamp[0];
+                            if (prevDur >= currDur) {
+                                new_chunks.splice(i, 1);
+                            } else {
+                                new_chunks.splice(j, 1);
+                                --i; // adjust since we removed before current position
+                            }
+                            break;
                         }
                     }
                 }
