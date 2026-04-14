@@ -208,26 +208,6 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                                     last_language,
                                 );
 
-                                // Drop words from compressed sentences in stride regions.
-                                // The model sometimes outputs many tokens between two close
-                                // timestamp tokens — DTW places those tokens at their true
-                                // audio position (much later), so word timestamps span far
-                                // more time than the chunk duration. These duplicate content
-                                // that the next chunk transcribes properly.
-                                if (
-                                    chunk.words.length > 1 &&
-                                    chunk.timestamp[0] !== null &&
-                                    chunk.timestamp[1] !== null
-                                ) {
-                                    const chunkDuration = chunk.timestamp[1] - chunk.timestamp[0];
-                                    const wordSpan = chunk.words.at(-1).timestamp[1] - chunk.words[0].timestamp[0];
-                                    if (wordSpan > Math.max(chunkDuration * 3, 0.5)) {
-                                        chunk.words = chunk.words.filter(
-                                            (word) => word.timestamp[0] <= chunk.timestamp[1],
-                                        );
-                                    }
-                                }
-
                                 // Cap word end timestamps to the chunk's end timestamp,
                                 // but only if it wouldn't create an inverted range (end < start)
                                 if (chunk.words.length > 0 && chunk.timestamp[1] !== null) {
@@ -382,6 +362,29 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                         new_chunks.push(word);
                     }
                 }
+
+                // Remove duplicate words at chunk boundaries. Stride overlap
+                // can produce the same word twice with nearly identical
+                // timestamps when the merge algorithm can't match tokens
+                // (different BPE encoding across chunks). We detect consecutive
+                // words with the same normalized text and overlapping time
+                // ranges, keeping the first occurrence.
+                for (let i = new_chunks.length - 1; i > 0; --i) {
+                    const prev = new_chunks[i - 1];
+                    const curr = new_chunks[i];
+                    if (
+                        prev.text.trim().toLowerCase() === curr.text.trim().toLowerCase() &&
+                        curr.timestamp[0] <= prev.timestamp[1] + TIMESTAMP_MERGE_TOLERANCE
+                    ) {
+                        // Keep the one with the wider span (more likely from the clean region)
+                        if (prev.timestamp[1] - prev.timestamp[0] >= curr.timestamp[1] - curr.timestamp[0]) {
+                            new_chunks.splice(i, 1);
+                        } else {
+                            new_chunks.splice(i - 1, 1);
+                        }
+                    }
+                }
+
                 optional = { chunks: new_chunks };
             } else {
                 optional = { chunks: chunks };

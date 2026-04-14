@@ -17980,15 +17980,6 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
                   resolved_token_timestamps,
                   last_language
                 );
-                if (chunk2.words.length > 1 && chunk2.timestamp[0] !== null && chunk2.timestamp[1] !== null) {
-                  const chunkDuration = chunk2.timestamp[1] - chunk2.timestamp[0];
-                  const wordSpan = chunk2.words.at(-1).timestamp[1] - chunk2.words[0].timestamp[0];
-                  if (wordSpan > Math.max(chunkDuration * 3, 0.5)) {
-                    chunk2.words = chunk2.words.filter(
-                      (word) => word.timestamp[0] <= chunk2.timestamp[1]
-                    );
-                  }
-                }
                 if (chunk2.words.length > 0 && chunk2.timestamp[1] !== null) {
                   for (const word of chunk2.words) {
                     if (word.timestamp[1] > chunk2.timestamp[1] && chunk2.timestamp[1] >= word.timestamp[0]) {
@@ -18093,6 +18084,17 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
         for (const chunk3 of chunks) {
           for (const word of chunk3.words) {
             new_chunks.push(word);
+          }
+        }
+        for (let i = new_chunks.length - 1; i > 0; --i) {
+          const prev = new_chunks[i - 1];
+          const curr = new_chunks[i];
+          if (prev.text.trim().toLowerCase() === curr.text.trim().toLowerCase() && curr.timestamp[0] <= prev.timestamp[1] + TIMESTAMP_MERGE_TOLERANCE) {
+            if (prev.timestamp[1] - prev.timestamp[0] >= curr.timestamp[1] - curr.timestamp[0]) {
+              new_chunks.splice(i, 1);
+            } else {
+              new_chunks.splice(i - 1, 1);
+            }
           }
         }
         optional = { chunks: new_chunks };
