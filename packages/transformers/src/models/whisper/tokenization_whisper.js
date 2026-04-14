@@ -208,15 +208,24 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                                     last_language,
                                 );
 
-                                // Remove words whose timestamps fall entirely outside the
-                                // chunk's timestamp range. This catches compressed sentences
-                                // in stride regions where the model outputs many tokens
-                                // between two close timestamp tokens — DTW places those
-                                // tokens at their true audio position (much later), but
-                                // they duplicate content that the next chunk transcribes
-                                // properly.
-                                if (chunk.words.length > 0 && chunk.timestamp[1] !== null) {
-                                    chunk.words = chunk.words.filter((word) => word.timestamp[0] <= chunk.timestamp[1]);
+                                // Drop words from compressed sentences in stride regions.
+                                // The model sometimes outputs many tokens between two close
+                                // timestamp tokens — DTW places those tokens at their true
+                                // audio position (much later), so word timestamps span far
+                                // more time than the chunk duration. These duplicate content
+                                // that the next chunk transcribes properly.
+                                if (
+                                    chunk.words.length > 1 &&
+                                    chunk.timestamp[0] !== null &&
+                                    chunk.timestamp[1] !== null
+                                ) {
+                                    const chunkDuration = chunk.timestamp[1] - chunk.timestamp[0];
+                                    const wordSpan = chunk.words.at(-1).timestamp[1] - chunk.words[0].timestamp[0];
+                                    if (wordSpan > Math.max(chunkDuration * 3, 0.5)) {
+                                        chunk.words = chunk.words.filter(
+                                            (word) => word.timestamp[0] <= chunk.timestamp[1],
+                                        );
+                                    }
                                 }
 
                                 // Cap word end timestamps to the chunk's end timestamp,

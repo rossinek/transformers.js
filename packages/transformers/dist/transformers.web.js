@@ -12539,8 +12539,14 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
                   resolved_token_timestamps,
                   last_language
                 );
-                if (chunk2.words.length > 0 && chunk2.timestamp[1] !== null) {
-                  chunk2.words = chunk2.words.filter((word) => word.timestamp[0] <= chunk2.timestamp[1]);
+                if (chunk2.words.length > 1 && chunk2.timestamp[0] !== null && chunk2.timestamp[1] !== null) {
+                  const chunkDuration = chunk2.timestamp[1] - chunk2.timestamp[0];
+                  const wordSpan = chunk2.words.at(-1).timestamp[1] - chunk2.words[0].timestamp[0];
+                  if (wordSpan > Math.max(chunkDuration * 3, 0.5)) {
+                    chunk2.words = chunk2.words.filter(
+                      (word) => word.timestamp[0] <= chunk2.timestamp[1]
+                    );
+                  }
                 }
                 if (chunk2.words.length > 0 && chunk2.timestamp[1] !== null) {
                   for (const word of chunk2.words) {
