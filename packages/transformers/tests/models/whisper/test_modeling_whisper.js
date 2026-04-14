@@ -1,4 +1,4 @@
-import { WhisperTokenizer, WhisperForConditionalGeneration, full } from "../../../src/transformers.js";
+import { WhisperTokenizer, WhisperForConditionalGeneration, Tensor, full } from "../../../src/transformers.js";
 
 import { MAX_MODEL_LOAD_TIME, MAX_TEST_EXECUTION_TIME, MAX_MODEL_DISPOSE_TIME, DEFAULT_MODEL_OPTIONS } from "../../init.js";
 
@@ -139,6 +139,26 @@ export default () => {
         },
         MAX_TEST_EXECUTION_TIME,
       );
+    });
+
+    describe("_extract_token_timestamps", () => {
+      it("should refine token timestamps to attention-weighted anchors within the DTW span", () => {
+        const extractor = Object.create(WhisperForConditionalGeneration.prototype);
+        extractor.config = {
+          decoder_layers: 1,
+          median_filter_width: 1,
+        };
+
+        const makeStep = (values) => [new Tensor("float32", Float32Array.from(values), [1, 1, 1, 4])];
+
+        const outputs = {
+          cross_attentions: [makeStep([5, 5, 0, 0]), makeStep([0, 0, 5, 5])],
+          sequences: new Tensor("int64", BigInt64Array.from([1n, 2n, 3n]), [1, 3]),
+        };
+
+        const timestamps = extractor._extract_token_timestamps(outputs, [[0, 0]], 4, 0.02, 0);
+        expect(timestamps.tolist()).toBeCloseToNested([[0.01, 0.05, 0.05]], 5);
+      });
     });
 
     afterAll(async () => {

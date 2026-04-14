@@ -34146,7 +34146,11 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     if (return_token_timestamps || generation_config.return_dict_in_generate) {
       const output = { sequences };
       if (return_token_timestamps) {
-        const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, lastTokenBoundary];
+        const full_timestamps = [
+          ...new Array(init_tokens.length).fill(0),
+          ...allTokenTimestamps,
+          lastTokenBoundary
+        ];
         output["token_timestamps"] = new Tensor2("float32", new Float32Array(full_timestamps), [
           1,
           full_timestamps.length
@@ -34489,21 +34493,39 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     for (let batch_idx = 0; batch_idx < timestampsShape[0]; ++batch_idx) {
       const matrix = batchedMatrices[batch_idx].neg().squeeze_(0);
       const [text_indices, time_indices] = dynamic_time_warping(matrix.tolist());
-      const diffs = Array.from(
-        { length: text_indices.length - 1 },
-        (v, i) => text_indices[i + 1] - text_indices[i]
-      );
-      const jumps = mergeArrays([1], diffs).map((x) => !!x);
-      const jump_times = [];
-      for (let i = 0; i < jumps.length; ++i) {
-        if (jumps[i]) {
-          jump_times.push(time_indices[i] * time_precision);
+      const numTokens = matrix.dims[0];
+      const tokenOnsets = new Array(numTokens).fill(-1);
+      const tokenOffsets = new Array(numTokens).fill(-1);
+      for (let i = 0; i < text_indices.length; ++i) {
+        const tok = text_indices[i];
+        if (tok < 0 || tok >= numTokens) continue;
+        if (tokenOnsets[tok] === -1) tokenOnsets[tok] = time_indices[i];
+        tokenOffsets[tok] = time_indices[i];
+      }
+      const attentionRows = batchedMatrices[batch_idx].squeeze(0);
+      const refined_times = [];
+      for (let tok = 0; tok < numTokens; ++tok) {
+        const onset = tokenOnsets[tok];
+        const offset = tokenOffsets[tok];
+        if (onset === -1 || offset === -1) {
+          refined_times.push(0);
+          continue;
         }
+        const row = attentionRows[tok].data;
+        let sumWeight = 0;
+        let weightedSum = 0;
+        for (let f = onset; f <= offset; ++f) {
+          const w = Math.exp(row[f]);
+          sumWeight += w;
+          weightedSum += f * w;
+        }
+        const meanFrame = sumWeight > 0 ? weightedSum / sumWeight : (onset + offset) / 2;
+        refined_times.push(meanFrame * time_precision);
       }
       const padded = new Array(num_input_ids).fill(0);
-      padded.push(...jump_times);
-      if (jump_times.length > 0) {
-        padded.push(jump_times.at(-1));
+      padded.push(...refined_times);
+      if (refined_times.length > 0) {
+        padded.push(refined_times.at(-1));
       }
       timestamps[batch_idx].data.set(padded);
     }

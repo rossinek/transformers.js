@@ -239,6 +239,12 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     current_tokens.push(token);
 
                     if (token_timestamps) {
+                        // `token_timestamps` are treated here as per-token
+                        // anchors. With the attention-weighted DTW refinement in
+                        // `modeling_whisper.js`, they are no longer pure DTW
+                        // transition boundaries. We intentionally keep the
+                        // historical [i-1, i] scheme because it remains the
+                        // empirically best word-span heuristic in benchmarks.
                         const start_index = Math.max(i - 1, 0);
                         let start_time = round(token_timestamps[start_index] + time_offset, 2);
 

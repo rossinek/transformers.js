@@ -93,11 +93,16 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         }
 
         const filtered_init_tokens = init_tokens.filter((token) => token != null);
-        if (!include_prompt_ids || !Array.isArray(generation_config.prompt_ids) || generation_config.prompt_ids.length === 0) {
+        if (
+            !include_prompt_ids ||
+            !Array.isArray(generation_config.prompt_ids) ||
+            generation_config.prompt_ids.length === 0
+        ) {
             return filtered_init_tokens;
         }
 
-        const max_target_positions = /** @type {{ max_target_positions?: number }} */ (this.config).max_target_positions ?? 448;
+        const max_target_positions =
+            /** @type {{ max_target_positions?: number }} */ (this.config).max_target_positions ?? 448;
         const max_prompt_length = Math.max(max_target_positions >> 1, 1);
         const normalized_prompt_ids = generation_config.prompt_ids
             .map((token) => Number(token))
@@ -210,8 +215,10 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         const hallucination_recovery = generation_config.hallucination_recovery !== false;
 
         // Temperature fallback configuration (matches Python's defaults)
-        const fallback_temperatures = hallucination_recovery ? this._get_fallback_temperatures(generation_config) : null;
-        const logprob_threshold = hallucination_recovery ? generation_config.logprob_threshold ?? -1.0 : null;
+        const fallback_temperatures = hallucination_recovery
+            ? this._get_fallback_temperatures(generation_config)
+            : null;
+        const logprob_threshold = hallucination_recovery ? (generation_config.logprob_threshold ?? -1.0) : null;
 
         // input_features shape: [batch=1, n_mels, total_frames]
         const input_features = inputs;
@@ -234,9 +241,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
 
         while (seek < total_frames) {
             const segment_init_tokens =
-                seek === 0 || generation_config.carry_initial_prompt
-                    ? init_tokens
-                    : init_tokens_without_prompt;
+                seek === 0 || generation_config.carry_initial_prompt ? init_tokens : init_tokens_without_prompt;
             // Slice input features for this segment
             const seek_end = Math.min(seek + num_segment_frames, total_frames);
             const segment_input = input_features.slice(null, null, [seek, seek_end]);
@@ -313,7 +318,11 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             const output = { sequences };
 
             if (return_token_timestamps) {
-                const full_timestamps = [...new Array(init_tokens.length).fill(0), ...allTokenTimestamps, lastTokenBoundary];
+                const full_timestamps = [
+                    ...new Array(init_tokens.length).fill(0),
+                    ...allTokenTimestamps,
+                    lastTokenBoundary,
+                ];
                 output['token_timestamps'] = new Tensor('float32', new Float32Array(full_timestamps), [
                     1,
                     full_timestamps.length,
@@ -762,26 +771,60 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             const matrix = batchedMatrices[batch_idx].neg().squeeze_(0);
             const [text_indices, time_indices] = dynamic_time_warping(matrix.tolist());
 
-            const diffs = Array.from(
-                { length: text_indices.length - 1 },
-                (v, i) => text_indices[i + 1] - text_indices[i],
-            );
-            const jumps = mergeArrays([1], diffs).map((x) => !!x); // convert to boolean
+            // Determine the DTW frame range (onset, offset) for each token.
+            // The DTW path assigns a contiguous range of encoder frames to each
+            // decoder token. We track the first and last frame per token.
+            const numTokens = matrix.dims[0];
+            const tokenOnsets = new Array(numTokens).fill(-1);
+            const tokenOffsets = new Array(numTokens).fill(-1);
+            for (let i = 0; i < text_indices.length; ++i) {
+                const tok = text_indices[i];
+                if (tok < 0 || tok >= numTokens) continue;
+                if (tokenOnsets[tok] === -1) tokenOnsets[tok] = time_indices[i];
+                tokenOffsets[tok] = time_indices[i];
+            }
 
-            const jump_times = [];
-            for (let i = 0; i < jumps.length; ++i) {
-                if (jumps[i]) {
-                    // NOTE: No point in rounding here, since we set to Float32Array later
-                    jump_times.push(time_indices[i] * time_precision);
+            // Refine timestamps using the attention-weighted mean within each
+            // token's DTW range. This intentionally changes the semantics of
+            // `token_timestamps`: they are no longer raw DTW jump boundaries,
+            // but refined token anchors that sit inside each token's aligned
+            // frame span. `_decode_asr()` still consumes them with the
+            // existing [i-1, i] scheme, which is an empirical heuristic rather
+            // than a strict boundary interpretation.
+            //
+            // The original (non-negated) attention matrix is still in
+            // `batchedMatrices`. Higher values = stronger attention. We apply
+            // `exp()` to the z-score-normalized values to get positive weights
+            // before computing the weighted mean frame index.
+            const attentionRows = batchedMatrices[batch_idx].squeeze(0); // [decoderLen, encoderLen]
+            const refined_times = [];
+            for (let tok = 0; tok < numTokens; ++tok) {
+                const onset = tokenOnsets[tok];
+                const offset = tokenOffsets[tok];
+                if (onset === -1 || offset === -1) {
+                    refined_times.push(0);
+                    continue;
                 }
+
+                const row = attentionRows[tok].data;
+                let sumWeight = 0;
+                let weightedSum = 0;
+                for (let f = onset; f <= offset; ++f) {
+                    const w = Math.exp(row[f]);
+                    sumWeight += w;
+                    weightedSum += f * w;
+                }
+
+                const meanFrame = sumWeight > 0 ? weightedSum / sumWeight : (onset + offset) / 2;
+                refined_times.push(meanFrame * time_precision);
             }
 
             // Pad with num_input_ids zeros at the start (for prefix tokens),
-            // then DTW jump_times, then duplicate last value (for eos token)
+            // then refined timestamps, then duplicate last value (for eos token)
             const padded = new Array(num_input_ids).fill(0);
-            padded.push(...jump_times);
-            if (jump_times.length > 0) {
-                padded.push(jump_times.at(-1));
+            padded.push(...refined_times);
+            if (refined_times.length > 0) {
+                padded.push(refined_times.at(-1));
             }
             timestamps[batch_idx].data.set(padded);
         }
