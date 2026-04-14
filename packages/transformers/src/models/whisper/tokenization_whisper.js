@@ -208,6 +208,17 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                                     last_language,
                                 );
 
+                                // Remove words whose timestamps fall entirely outside the
+                                // chunk's timestamp range. This catches compressed sentences
+                                // in stride regions where the model outputs many tokens
+                                // between two close timestamp tokens — DTW places those
+                                // tokens at their true audio position (much later), but
+                                // they duplicate content that the next chunk transcribes
+                                // properly.
+                                if (chunk.words.length > 0 && chunk.timestamp[1] !== null) {
+                                    chunk.words = chunk.words.filter((word) => word.timestamp[0] <= chunk.timestamp[1]);
+                                }
+
                                 // Cap word end timestamps to the chunk's end timestamp,
                                 // but only if it wouldn't create an inverted range (end < start)
                                 if (chunk.words.length > 0 && chunk.timestamp[1] !== null) {

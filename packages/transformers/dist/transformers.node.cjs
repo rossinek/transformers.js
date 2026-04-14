@@ -18914,6 +18914,9 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
                   last_language
                 );
                 if (chunk2.words.length > 0 && chunk2.timestamp[1] !== null) {
+                  chunk2.words = chunk2.words.filter((word) => word.timestamp[0] <= chunk2.timestamp[1]);
+                }
+                if (chunk2.words.length > 0 && chunk2.timestamp[1] !== null) {
                   for (const word of chunk2.words) {
                     if (word.timestamp[1] > chunk2.timestamp[1] && chunk2.timestamp[1] >= word.timestamp[0]) {
                       word.timestamp[1] = chunk2.timestamp[1];
