@@ -907,6 +907,13 @@
       return map.get(base) || base;
     }
 
+    function median(arr) {
+      if (arr.length === 0) return null;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    }
+
     function computeMetrics(clipName) {
       const gt = state.groundTruth[clipName];
       const mr = state.modelResults[clipName];
@@ -919,29 +926,70 @@
 
       const gtW = gt.words.map(norm).filter(w => w.length > 0);
       const mW = mr.word.chunks.map(norm).filter(w => w.length > 0);
-      const wer = computeWER(gtW, mW);
+      const { wer } = levenshteinAlign(gtW, mW);
 
       const aligned = alignWords(gt.words, mr.word.chunks, lang);
-      const tsErrors = [];
-      for (const a of aligned) {
-        if (a.gt && a.model) {
-          if (a.gt.start != null && a.model.start != null) tsErrors.push(Math.abs(a.gt.start - a.model.start));
-          if (a.gt.end != null && a.model.end != null) tsErrors.push(Math.abs(a.gt.end - a.model.end));
-        }
-      }
 
+      // Audio duration for filtering
+      let audioDuration = 0;
+      for (const w of gt.words) if (w.end > audioDuration) audioDuration = w.end;
+      audioDuration += 1;
+      const isValidTime = (t) => Number.isFinite(t) && t >= 0 && t <= audioDuration;
+
+      // --- Asymmetric Start MAE ---
+      const startDeltas = [];
+      for (const a of aligned) {
+        if (a.status !== "match") continue;
+        if (!isValidTime(a.gt.start) || !isValidTime(a.model.start)) continue;
+        const diff_s = a.model.start - a.gt.start;
+        startDeltas.push(diff_s >= 0 ? diff_s : Math.max(Math.abs(diff_s) - 0.1, 0) * 0.3);
+      }
+      const mae = startDeltas.length > 0 ? startDeltas.reduce((a, b) => a + b, 0) / startDeltas.length : null;
+
+      // --- Full MAE (start + end) ---
+      const fullDeltas = [];
+      for (const a of aligned) {
+        if (a.status !== "match") continue;
+        if (!isValidTime(a.gt.start) || !isValidTime(a.model.start)) continue;
+        if (!Number.isFinite(a.gt.end) || !Number.isFinite(a.model.end)) continue;
+        const diff_s = a.model.start - a.gt.start;
+        const startDelta = diff_s >= 0 ? diff_s : Math.max(Math.abs(diff_s) - 0.1, 0) * 0.3;
+        const diff_e = a.model.end - a.gt.end;
+        const endDelta = diff_e <= 0 ? Math.abs(diff_e) : Math.max(diff_e - 0.1, 0) * 0.3;
+        fullDeltas.push((startDelta + endDelta * 0.5) / 1.5);
+      }
+      const fullMae = fullDeltas.length > 0 ? fullDeltas.reduce((a, b) => a + b, 0) / fullDeltas.length : null;
+
+      // --- Coverage MED & AVG ---
+      const coverageScores = [];
+      for (const a of aligned) {
+        if (a.status !== "match") continue;
+        if (!Number.isFinite(a.gt.start) || !Number.isFinite(a.gt.end)) continue;
+        if (!Number.isFinite(a.model.start) || !Number.isFinite(a.model.end)) continue;
+        const gtDur = a.gt.end - a.gt.start;
+        if (gtDur <= 0) continue;
+        const overlap = Math.min(a.gt.end, a.model.end) - Math.max(a.gt.start, a.model.start);
+        const coverage = Math.max(0, Math.min(overlap / gtDur, 1));
+        const lateAmount = Math.max(a.model.start - a.gt.start, 0);
+        const startFactor = 1 - Math.min(lateAmount / gtDur, 1);
+        coverageScores.push(coverage * startFactor);
+      }
+      const coverageMed = median(coverageScores);
+      const coverageAvg = coverageScores.length > 0 ? coverageScores.reduce((a, b) => a + b, 0) / coverageScores.length : null;
+      const zeroCoverage = coverageScores.filter(s => s === 0).length;
+
+      // --- Monotonicity ---
       let monotonicity = 0;
       const chunks = mr.word.chunks;
       for (let i = 1; i < chunks.length; i++) {
         if (chunks[i].start != null && chunks[i - 1].end != null && chunks[i].start < chunks[i - 1].end - 0.01) monotonicity++;
       }
 
-      const mae = tsErrors.length > 0 ? tsErrors.reduce((a, b) => a + b, 0) / tsErrors.length : null;
       const textMatch = mr.word.text.trim() === mr.sentence.text.trim();
-      return { wer, mae, monotonicity, textMatch };
+      return { wer, mae, fullMae, coverageMed, coverageAvg, zeroCoverage, monotonicity, textMatch };
     }
 
-    function computeWER(ref, hyp) {
+    function levenshteinAlign(ref, hyp) {
       const n = ref.length, m = hyp.length;
       const d = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
       for (let i = 0; i <= n; i++) d[i][0] = i;
@@ -951,26 +999,41 @@
           const cost = ref[i - 1] === hyp[j - 1] ? 0 : 1;
           d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
         }
-      return n > 0 ? d[n][m] / n : 0;
+      const wer = n > 0 ? d[n][m] / n : 0;
+
+      // Backtrace: match > substitution > insertion > deletion
+      const pairs = [];
+      let i = n, j = m;
+      while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && ref[i - 1] === hyp[j - 1]) {
+          pairs.push({ refIdx: i - 1, hypIdx: j - 1, status: "match" });
+          i--; j--;
+        } else if (i > 0 && j > 0 && d[i][j] === d[i - 1][j - 1] + 1) {
+          pairs.push({ refIdx: i - 1, hypIdx: j - 1, status: "substitution" });
+          i--; j--;
+        } else if (j > 0 && d[i][j] === d[i][j - 1] + 1) {
+          pairs.push({ refIdx: null, hypIdx: j - 1, status: "extra" });
+          j--;
+        } else {
+          pairs.push({ refIdx: i - 1, hypIdx: null, status: "missing" });
+          i--;
+        }
+      }
+      pairs.reverse();
+      return { wer, alignment: pairs };
     }
 
     function alignWords(gtWords, modelWords, lang) {
-      const result = [];
-      let mi = 0;
-      for (const gw of gtWords) {
-        const gn = normalizeWord(gw.text, lang);
-        let found = false;
-        for (let look = mi; look < Math.min(mi + 5, modelWords.length); look++) {
-          if (normalizeWord(modelWords[look].text, lang) === gn) {
-            for (let s = mi; s < look; s++) result.push({ gt: null, model: modelWords[s] });
-            result.push({ gt: gw, model: modelWords[look] });
-            mi = look + 1; found = true; break;
-          }
-        }
-        if (!found) result.push({ gt: gw, model: null });
-      }
-      for (; mi < modelWords.length; mi++) result.push({ gt: null, model: modelWords[mi] });
-      return result;
+      const refNorm = gtWords.map(w => normalizeWord(w.text, lang));
+      const hypNorm = modelWords.map(w => normalizeWord(w.text, lang));
+      const { alignment } = levenshteinAlign(refNorm, hypNorm);
+      return alignment.map(a => ({
+        gt: a.refIdx != null ? gtWords[a.refIdx] : null,
+        model: a.hypIdx != null ? modelWords[a.hypIdx] : null,
+        status: a.status,
+        gtIdx: a.refIdx,
+        modelIdx: a.hypIdx,
+      }));
     }
 
     // Build per-index diff status maps from alignment
@@ -979,25 +1042,10 @@
       const aligned = alignWords(gtWords, modelWords, lang);
       const gtDiff = new Map();   // gt word index → "matched" | "missing" | "subst"
       const modelDiff = new Map(); // model word index → "matched" | "extra" | "subst"
-
+      const statusMap = { match: "matched", substitution: "subst", missing: "missing", extra: "extra" };
       for (const a of aligned) {
-        if (a.gt && a.model) {
-          const gn = normalizeWord(a.gt.text, lang);
-          const mn = normalizeWord(a.model.text, lang);
-          const gi = gtWords.indexOf(a.gt);
-          const mi = modelWords.indexOf(a.model);
-          if (gn === mn) {
-            gtDiff.set(gi, "matched");
-            modelDiff.set(mi, "matched");
-          } else {
-            gtDiff.set(gi, "subst");
-            modelDiff.set(mi, "subst");
-          }
-        } else if (a.gt && !a.model) {
-          gtDiff.set(gtWords.indexOf(a.gt), "missing");
-        } else if (!a.gt && a.model) {
-          modelDiff.set(modelWords.indexOf(a.model), "extra");
-        }
+        if (a.gtIdx != null) gtDiff.set(a.gtIdx, statusMap[a.status]);
+        if (a.modelIdx != null) modelDiff.set(a.modelIdx, statusMap[a.status]);
       }
       return { gtDiff, modelDiff };
     }
@@ -1012,10 +1060,20 @@
       const werCls = m.wer < 0.05 ? "good" : m.wer < 0.15 ? "warn" : "bad";
       const maeStr = m.mae != null ? m.mae.toFixed(3) + "s" : "N/A";
       const maeCls = m.mae != null ? (m.mae < 0.3 ? "good" : m.mae < 0.8 ? "warn" : "bad") : "";
+      const fullMaeStr = m.fullMae != null ? m.fullMae.toFixed(3) + "s" : "N/A";
+      const fullMaeCls = m.fullMae != null ? (m.fullMae < 0.3 ? "good" : m.fullMae < 0.8 ? "warn" : "bad") : "";
+      const covMedStr = m.coverageMed != null ? (m.coverageMed * 100).toFixed(1) + "%" : "N/A";
+      const covMedCls = m.coverageMed != null ? (m.coverageMed > 0.8 ? "good" : m.coverageMed > 0.5 ? "warn" : "bad") : "";
+      const covAvgStr = m.coverageAvg != null ? (m.coverageAvg * 100).toFixed(1) + "%" : "N/A";
+      const covAvgCls = m.coverageAvg != null ? (m.coverageAvg > 0.8 ? "good" : m.coverageAvg > 0.5 ? "warn" : "bad") : "";
 
       bar.innerHTML = `
         <div class="metric-card"><div class="label">WER</div><div class="value ${werCls}">${werPct}%</div></div>
-        <div class="metric-card"><div class="label">Timestamp MAE</div><div class="value ${maeCls}">${maeStr}</div></div>
+        <div class="metric-card"><div class="label">Start MAE</div><div class="value ${maeCls}">${maeStr}</div></div>
+        <div class="metric-card"><div class="label">Full MAE</div><div class="value ${fullMaeCls}">${fullMaeStr}</div></div>
+        <div class="metric-card"><div class="label">Cov MED</div><div class="value ${covMedCls}">${covMedStr}</div></div>
+        <div class="metric-card"><div class="label">Cov AVG</div><div class="value ${covAvgCls}">${covAvgStr}</div></div>
+        <div class="metric-card"><div class="label">Zero Cov</div><div class="value ${m.zeroCoverage === 0 ? "good" : "bad"}">${m.zeroCoverage}</div></div>
         <div class="metric-card"><div class="label">Monotonicity</div><div class="value ${m.monotonicity === 0 ? "good" : "bad"}">${m.monotonicity}</div></div>
         <div class="metric-card"><div class="label">W/S match</div><div class="value ${m.textMatch ? "good" : "bad"}">${m.textMatch ? "Yes" : "No"}</div></div>
       `;
@@ -1033,7 +1091,7 @@
     // Globals exposed:
     //   window.__READY__   — true when page initialized
     //   window.__DONE__    — true when autorun finished
-    //   window.__METRICS__ — { clipName: { wer, mae, monotonicity, textMatch } }
+    //   window.__METRICS__ — { clipName: { wer, mae, fullMae, coverageMed, coverageAvg, zeroCoverage, monotonicity, textMatch } }
     //   window.__RESULTS__ — { clipName: { model: {word,sentence}, groundTruth, diff } }
     //   window.__ERROR__   — error string if autorun failed
     //
@@ -1069,20 +1127,11 @@
         const aligned = gt?.words ? alignWords(gt.words, mr.word.chunks, lang) : null;
 
         // Build readable diff
-        const diff = aligned ? aligned.map(a => {
-          if (a.gt && a.model) {
-            const match = normalizeWord(a.gt.text, lang) === normalizeWord(a.model.text, lang);
-            return {
-              status: match ? "match" : "substitution",
-              gt: { text: a.gt.text, start: a.gt.start, end: a.gt.end },
-              model: { text: a.model.text, start: a.model.start, end: a.model.end },
-            };
-          } else if (a.gt) {
-            return { status: "missing", gt: { text: a.gt.text, start: a.gt.start, end: a.gt.end }, model: null };
-          } else {
-            return { status: "extra", gt: null, model: { text: a.model.text, start: a.model.start, end: a.model.end } };
-          }
-        }) : null;
+        const diff = aligned ? aligned.map(a => ({
+          status: a.status,
+          gt: a.gt ? { text: a.gt.text, start: a.gt.start, end: a.gt.end } : null,
+          model: a.model ? { text: a.model.text, start: a.model.start, end: a.model.end } : null,
+        })) : null;
 
         out[name] = {
           model: mr,

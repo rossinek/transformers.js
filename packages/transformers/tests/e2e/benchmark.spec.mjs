@@ -52,7 +52,11 @@ const test = base.extend({
 // Default thresholds — any clip not in CLIP_THRESHOLDS uses these
 const DEFAULT_THRESHOLDS = {
   maxWER: 0.25,           // 25% word error rate
-  maxTimestampMAE: 1.5,   // 1.5 seconds mean absolute error
+  maxTimestampMAE: 1.5,   // 1.5s start timestamp MAE (asymmetric)
+  maxFullMAE: 1.5,        // 1.5s full MAE (start + end)
+  minCoverageMed: 0.3,    // 30% coverage median
+  minCoverageAvg: 0.3,    // 30% coverage average
+  maxZeroCoverage: 10,    // at most 10 words with zero coverage
   maxMonotonicity: 2,     // at most 2 monotonicity violations
   textMatch: true,        // word and sentence mode text must match
 };
@@ -90,7 +94,10 @@ async function runBenchmark(page, clipName) {
 function printMetrics(name, m) {
   const werPct = (m.wer * 100).toFixed(1);
   const maeStr = m.mae != null ? m.mae.toFixed(3) + "s" : "N/A";
-  console.log(`  ${name}: WER=${werPct}% MAE=${maeStr} Mono=${m.monotonicity} W/S=${m.textMatch}`);
+  const fullMaeStr = m.fullMae != null ? m.fullMae.toFixed(3) + "s" : "N/A";
+  const covMedStr = m.coverageMed != null ? (m.coverageMed * 100).toFixed(1) + "%" : "N/A";
+  const covAvgStr = m.coverageAvg != null ? (m.coverageAvg * 100).toFixed(1) + "%" : "N/A";
+  console.log(`  ${name}: WER=${werPct}% MAE=${maeStr} FullMAE=${fullMaeStr} CovMed=${covMedStr} CovAvg=${covAvgStr} ZeroCov=${m.zeroCoverage} Mono=${m.monotonicity} W/S=${m.textMatch}`);
 }
 
 function printDiff(diff) {
@@ -133,6 +140,10 @@ test("whisper benchmark — all clips pass quality thresholds", async ({ page })
     const clipFailures = [];
     if (m.wer > t.maxWER) clipFailures.push(`WER ${(m.wer * 100).toFixed(1)}% > ${(t.maxWER * 100).toFixed(0)}%`);
     if (m.mae != null && m.mae > t.maxTimestampMAE) clipFailures.push(`MAE ${m.mae.toFixed(3)}s > ${t.maxTimestampMAE}s`);
+    if (m.fullMae != null && m.fullMae > t.maxFullMAE) clipFailures.push(`FullMAE ${m.fullMae.toFixed(3)}s > ${t.maxFullMAE}s`);
+    if (m.coverageMed != null && m.coverageMed < t.minCoverageMed) clipFailures.push(`CovMed ${(m.coverageMed * 100).toFixed(1)}% < ${(t.minCoverageMed * 100).toFixed(0)}%`);
+    if (m.coverageAvg != null && m.coverageAvg < t.minCoverageAvg) clipFailures.push(`CovAvg ${(m.coverageAvg * 100).toFixed(1)}% < ${(t.minCoverageAvg * 100).toFixed(0)}%`);
+    if (m.zeroCoverage > t.maxZeroCoverage) clipFailures.push(`ZeroCov ${m.zeroCoverage} > ${t.maxZeroCoverage}`);
     if (m.monotonicity > t.maxMonotonicity) clipFailures.push(`monotonicity ${m.monotonicity} > ${t.maxMonotonicity}`);
     if (t.textMatch && !m.textMatch) clipFailures.push("word/sentence text mismatch");
 
@@ -204,6 +215,10 @@ test("whisper benchmark — single clip analysis", async ({ page }) => {
   const failures = [];
   if (m.wer > t.maxWER) failures.push(`WER ${(m.wer * 100).toFixed(1)}% > ${(t.maxWER * 100).toFixed(0)}%`);
   if (m.mae != null && m.mae > t.maxTimestampMAE) failures.push(`MAE ${m.mae.toFixed(3)}s > ${t.maxTimestampMAE}s`);
+  if (m.fullMae != null && m.fullMae > t.maxFullMAE) failures.push(`FullMAE ${m.fullMae.toFixed(3)}s > ${t.maxFullMAE}s`);
+  if (m.coverageMed != null && m.coverageMed < t.minCoverageMed) failures.push(`CovMed ${(m.coverageMed * 100).toFixed(1)}% < ${(t.minCoverageMed * 100).toFixed(0)}%`);
+  if (m.coverageAvg != null && m.coverageAvg < t.minCoverageAvg) failures.push(`CovAvg ${(m.coverageAvg * 100).toFixed(1)}% < ${(t.minCoverageAvg * 100).toFixed(0)}%`);
+  if (m.zeroCoverage > t.maxZeroCoverage) failures.push(`ZeroCov ${m.zeroCoverage} > ${t.maxZeroCoverage}`);
   if (m.monotonicity > t.maxMonotonicity) failures.push(`monotonicity ${m.monotonicity} > ${t.maxMonotonicity}`);
   if (t.textMatch && !m.textMatch) failures.push("word/sentence text mismatch");
 
