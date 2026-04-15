@@ -186,7 +186,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         });
 
         if (generation_config.return_token_timestamps) {
-            outputs['token_timestamps'] = this._extract_token_timestamps(
+            const { timestamps, rawTimestamps } = this._extract_token_timestamps(
                 // @ts-expect-error TS2345
                 outputs,
                 generation_config.alignment_heads,
@@ -194,6 +194,8 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 0.02,
                 init_tokens.length,
             );
+            outputs['token_timestamps'] = timestamps;
+            outputs['raw_token_timestamps'] = rawTimestamps;
         }
 
         return outputs;
@@ -235,8 +237,10 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
         let seek = 0;
         const allTokens = [];
         const allTokenTimestamps = [];
+        const allRawTokenTimestamps = [];
         let accumulated_score = 0;
         let lastTokenBoundary = 0;
+        let lastRawTokenBoundary = 0;
         const init_tokens_without_prompt = this._retrieve_init_tokens(generation_config, false);
 
         while (seek < total_frames) {
@@ -250,23 +254,24 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             const segment_frames = segment_input.dims[2];
             const segment_features = this._pad_segment(segment_input, segment_frames, num_segment_frames);
 
-            const { generated_tokens, outputs, seek_token_timestamps } = await this._generate_segment({
-                segment_features,
-                generation_config,
-                logits_processor,
-                init_tokens: segment_init_tokens,
-                fallback_temperatures,
-                logprob_threshold,
-                timestamp_begin,
-                eos_token_id,
-                return_token_timestamps,
-                no_speech_threshold: generation_config.no_speech_threshold ?? null,
-                compression_ratio_threshold: generation_config.compression_ratio_threshold ?? null,
-                no_speech_token_id: generation_config.no_speech_token_id ?? null,
-                seek,
-                seek_end,
-                input_stride,
-            });
+            const { generated_tokens, outputs, seek_token_timestamps, seek_raw_token_timestamps } =
+                await this._generate_segment({
+                    segment_features,
+                    generation_config,
+                    logits_processor,
+                    init_tokens: segment_init_tokens,
+                    fallback_temperatures,
+                    logprob_threshold,
+                    timestamp_begin,
+                    eos_token_id,
+                    return_token_timestamps,
+                    no_speech_threshold: generation_config.no_speech_threshold ?? null,
+                    compression_ratio_threshold: generation_config.compression_ratio_threshold ?? null,
+                    no_speech_token_id: generation_config.no_speech_token_id ?? null,
+                    seek,
+                    seek_end,
+                    input_stride,
+                });
 
             if (outputs?.should_skip) {
                 seek = seek_end;
@@ -298,10 +303,13 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             allTokens.push(...generated_tokens.slice(0, tokens_to_keep));
             if (seek_token_timestamps) {
                 allTokenTimestamps.push(...seek_token_timestamps.slice(0, tokens_to_keep));
+                allRawTokenTimestamps.push(...seek_raw_token_timestamps.slice(0, tokens_to_keep));
                 if (tokens_to_keep < seek_token_timestamps.length) {
                     lastTokenBoundary = seek_token_timestamps[tokens_to_keep];
+                    lastRawTokenBoundary = seek_raw_token_timestamps[tokens_to_keep];
                 } else if (seek_token_timestamps.length > 0) {
                     lastTokenBoundary = seek_token_timestamps.at(-1);
+                    lastRawTokenBoundary = seek_raw_token_timestamps.at(-1);
                 }
             }
             accumulated_score += outputs?.scores?.[0] ?? 0;
@@ -326,6 +334,15 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 output['token_timestamps'] = new Tensor('float32', new Float32Array(full_timestamps), [
                     1,
                     full_timestamps.length,
+                ]);
+                const full_raw_timestamps = [
+                    ...new Array(init_tokens.length).fill(0),
+                    ...allRawTokenTimestamps,
+                    lastRawTokenBoundary,
+                ];
+                output['raw_token_timestamps'] = new Tensor('float32', new Float32Array(full_raw_timestamps), [
+                    1,
+                    full_raw_timestamps.length,
                 ]);
             }
             if (generation_config.return_dict_in_generate) {
@@ -524,16 +541,23 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
 
         // Extract token-level timestamps if needed
         let seek_token_timestamps = null;
+        let seek_raw_token_timestamps = null;
         if (return_token_timestamps && outputs.cross_attentions) {
-            outputs['token_timestamps'] = this._extract_token_timestamps(
+            const { timestamps: refined, rawTimestamps: raw } = this._extract_token_timestamps(
                 outputs,
                 generation_config.alignment_heads,
                 Math.floor((seek_end - seek) / input_stride),
                 0.02,
                 init_tokens.length,
             );
+            outputs['token_timestamps'] = refined;
+            outputs['raw_token_timestamps'] = raw;
             const time_offset = (seek / input_stride) * 0.02;
-            seek_token_timestamps = outputs.token_timestamps[0]
+            seek_token_timestamps = refined[0]
+                .tolist()
+                .slice(init_tokens.length)
+                .map((/** @type {number} */ t) => t + time_offset);
+            seek_raw_token_timestamps = raw[0]
                 .tolist()
                 .slice(init_tokens.length)
                 .map((/** @type {number} */ t) => t + time_offset);
@@ -544,7 +568,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             generated_tokens.pop();
         }
 
-        return { generated_tokens, outputs, seek_token_timestamps };
+        return { generated_tokens, outputs, seek_token_timestamps, seek_raw_token_timestamps };
     }
 
     async _estimate_no_speech_probability(segment_features, init_tokens, no_speech_token_id) {
@@ -664,7 +688,7 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      * @param {number} [num_frames=null] Number of frames in the input audio.
      * @param {number} [time_precision=0.02] Precision of the timestamps in seconds
      * @param {number} [num_input_ids=0] Number of decoder input ids (prefix tokens) to skip in DTW
-     * @returns {Tensor} tensor containing the timestamps in seconds for each predicted token
+     * @returns {{ timestamps: Tensor, rawTimestamps: Tensor }} refined and raw DTW onset timestamps
      */
     _extract_token_timestamps(
         generate_outputs,
@@ -763,6 +787,11 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
             new Float32Array(timestampsShape[0] * timestampsShape[1]),
             timestampsShape,
         );
+        const rawTimestamps = new Tensor(
+            'float32',
+            new Float32Array(timestampsShape[0] * timestampsShape[1]),
+            timestampsShape,
+        );
 
         // Perform dynamic time warping on each element of the batch.
         for (let batch_idx = 0; batch_idx < timestampsShape[0]; ++batch_idx) {
@@ -840,17 +869,30 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
                 refined_times[tok] = Math.max(refined_times[tok], refined_times[tok - 1]);
             }
 
-            // Pad with num_input_ids zeros at the start (for prefix tokens),
-            // then refined timestamps, then duplicate last value (for eos token)
+            // Build raw DTW offset timestamps (last frame per token, used
+            // for word end timestamps to preserve natural word duration).
+            const raw_times = [];
+            for (let tok = 0; tok < numTokens; ++tok) {
+                raw_times.push(tokenOffsets[tok] === -1 ? 0 : tokenOffsets[tok] * time_precision);
+            }
+
+            // Pad both arrays with num_input_ids zeros (prefix tokens) + duplicate last value (eos token)
             const padded = new Array(num_input_ids).fill(0);
             padded.push(...refined_times);
             if (refined_times.length > 0) {
                 padded.push(refined_times.at(-1));
             }
             timestamps[batch_idx].data.set(padded);
+
+            const rawPadded = new Array(num_input_ids).fill(0);
+            rawPadded.push(...raw_times);
+            if (raw_times.length > 0) {
+                rawPadded.push(raw_times.at(-1));
+            }
+            rawTimestamps[batch_idx].data.set(rawPadded);
         }
 
-        return timestamps;
+        return { timestamps, rawTimestamps };
     }
 }
 

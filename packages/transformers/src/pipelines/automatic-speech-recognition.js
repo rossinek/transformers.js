@@ -234,8 +234,10 @@ export class AutomaticSpeechRecognitionPipeline
         generation_config['hallucination_recovery'] = hallucination_recovery;
         delete generation_config['voice_activity_detection'];
         if (generation_config.initial_prompt && generation_config.prompt_ids == null) {
-            generation_config.prompt_ids = /** @type {{ get_prompt_ids?: (text: string) => number[] }} */ (this.processor)
-                .get_prompt_ids?.(generation_config.initial_prompt) ?? null;
+            generation_config.prompt_ids =
+                /** @type {{ get_prompt_ids?: (text: string) => number[] }} */ (this.processor).get_prompt_ids?.(
+                    generation_config.initial_prompt,
+                ) ?? null;
         }
         delete generation_config['initial_prompt'];
 
@@ -384,7 +386,11 @@ export class AutomaticSpeechRecognitionPipeline
     }
 
     _shouldUseSegmentedVadTranscription(vadResult) {
-        return vadResult.applied && vadResult.segments.length > 1 && vadResult.segments.length <= MAX_SEGMENTED_VAD_SEGMENTS;
+        return (
+            vadResult.applied &&
+            vadResult.segments.length > 1 &&
+            vadResult.segments.length <= MAX_SEGMENTED_VAD_SEGMENTS
+        );
     }
 
     async _transcribeWhisperAudio({
@@ -480,14 +486,17 @@ export class AutomaticSpeechRecognitionPipeline
         }
 
         output.chunks = output.chunks
-            .filter((chunk) => typeof chunk?.text === 'string' && Array.isArray(chunk.timestamp) && chunk.timestamp.length === 2)
+            .filter(
+                (chunk) =>
+                    typeof chunk?.text === 'string' && Array.isArray(chunk.timestamp) && chunk.timestamp.length === 2,
+            )
             .sort((a, b) => {
-                const a_start = typeof a.timestamp[0] === 'number' ? a.timestamp[0] : a.timestamp[1] ?? Infinity;
-                const b_start = typeof b.timestamp[0] === 'number' ? b.timestamp[0] : b.timestamp[1] ?? Infinity;
+                const a_start = typeof a.timestamp[0] === 'number' ? a.timestamp[0] : (a.timestamp[1] ?? Infinity);
+                const b_start = typeof b.timestamp[0] === 'number' ? b.timestamp[0] : (b.timestamp[1] ?? Infinity);
                 if (a_start !== b_start) return a_start - b_start;
 
-                const a_end = typeof a.timestamp[1] === 'number' ? a.timestamp[1] : a.timestamp[0] ?? Infinity;
-                const b_end = typeof b.timestamp[1] === 'number' ? b.timestamp[1] : b.timestamp[0] ?? Infinity;
+                const a_end = typeof a.timestamp[1] === 'number' ? a.timestamp[1] : (a.timestamp[0] ?? Infinity);
+                const b_end = typeof b.timestamp[1] === 'number' ? b.timestamp[1] : (b.timestamp[0] ?? Infinity);
                 return a_end - b_end;
             });
 
@@ -520,7 +529,10 @@ export class AutomaticSpeechRecognitionPipeline
 
         output.chunks = deduped;
         if (typeof output.text !== 'string' || output.text.trim().length === 0) {
-            output.text = deduped.map((chunk) => chunk.text).join('').trim();
+            output.text = deduped
+                .map((chunk) => chunk.text)
+                .join('')
+                .trim();
         }
         return output;
     }
@@ -550,8 +562,14 @@ export class AutomaticSpeechRecognitionPipeline
         const combinedChunks = return_timestamps ? filtered.flatMap((output) => output.chunks ?? []) : null;
         const text =
             combinedChunks && combinedChunks.length > 0
-                ? combinedChunks.map((chunk) => chunk.text ?? '').join('').trim()
-                : filtered.map((output) => output.text ?? '').join('').trim();
+                ? combinedChunks
+                      .map((chunk) => chunk.text ?? '')
+                      .join('')
+                      .trim()
+                : filtered
+                      .map((output) => output.text ?? '')
+                      .join('')
+                      .trim();
 
         if (!return_timestamps) {
             return { text };
@@ -677,7 +695,7 @@ export class AutomaticSpeechRecognitionPipeline
             const remappedEnd = remapCompactTimestamp(analysis.end_s, vadResult.segments, 'end');
             const remappedDuration = Math.max(remappedEnd - remappedStart, 0.1);
             return analysis.text_token_count / remappedDuration < HARD_HALLUCINATION_TOKENS_PER_SECOND;
-            });
+        });
         sourceWindows.push(...this._collectRemovedVadGapWindows(vadResult));
         if (sourceWindows.length === 0) {
             return [];
@@ -930,9 +948,14 @@ export class AutomaticSpeechRecognitionPipeline
         };
 
         const token_timestamps =
-            data?.token_timestamps?.tolist?.()?.[0]?.map((/** @type {number} */ x) =>
-                round(Math.max(0, x + timestamp_shift_s), 2),
-            ) ?? null;
+            data?.token_timestamps
+                ?.tolist?.()?.[0]
+                ?.map((/** @type {number} */ x) => round(Math.max(0, x + timestamp_shift_s), 2)) ?? null;
+
+        const raw_token_timestamps =
+            data?.raw_token_timestamps
+                ?.tolist?.()?.[0]
+                ?.map((/** @type {number} */ x) => round(Math.max(0, x + timestamp_shift_s), 2)) ?? null;
 
         if (return_timestamps === 'word') {
             const sequences = data.sequences.tolist()[0];
@@ -944,11 +967,17 @@ export class AutomaticSpeechRecognitionPipeline
             if (token_timestamps) {
                 outputChunk.token_timestamps = token_timestamps.slice(prefixLength);
             }
+            if (raw_token_timestamps) {
+                outputChunk.raw_token_timestamps = raw_token_timestamps.slice(prefixLength);
+            }
         } else {
             const sequences = data?.sequences ?? data;
             outputChunk.tokens = /** @type {Tensor} */ (sequences)[0].tolist();
             if (token_timestamps) {
                 outputChunk.token_timestamps = token_timestamps;
+            }
+            if (raw_token_timestamps) {
+                outputChunk.raw_token_timestamps = raw_token_timestamps;
             }
         }
 

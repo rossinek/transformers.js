@@ -22,7 +22,7 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
 
     /**
      * Decodes automatic speech recognition (ASR) sequences.
-     * @param {Array<{tokens: bigint[], token_timestamps?: number[], stride: number[]}>} sequences The sequences to decode.
+     * @param {Array<{tokens: bigint[], token_timestamps?: number[], raw_token_timestamps?: number[], stride: number[]}>} sequences The sequences to decode.
      * @param {Object} options The options to use for decoding.
      * @returns {Array<string|{chunks?: undefined|Array<{language: string|null, timestamp: Array<number|null>, text: string}>}>} The decoded sequences.
      */
@@ -83,6 +83,9 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
             // NOTE: python version has batches, so it uses [0]
             const token_ids = output.tokens;
             const token_timestamps = Array.isArray(output.token_timestamps) ? output.token_timestamps : null;
+            const raw_token_timestamps = Array.isArray(output.raw_token_timestamps)
+                ? output.raw_token_timestamps
+                : null;
 
             // These keep track of timestamps within strides, which need
             // to be skipped and resolve all tokens in a single chunk.
@@ -258,31 +261,30 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     current_tokens.push(token);
 
                     if (token_timestamps) {
-                        // `token_timestamps` are treated here as per-token
-                        // anchors. With the attention-weighted DTW refinement in
-                        // `modeling_whisper.js`, they are no longer pure DTW
-                        // transition boundaries. We intentionally keep the
-                        // historical [i-1, i] scheme because it remains the
-                        // empirically best word-span heuristic in benchmarks.
+                        // Refined timestamps for both start and end via [i-1, i].
+                        // These are used for merging/dedup. A third element carries
+                        // the raw DTW offset end (for post-processing extension).
                         const start_index = Math.max(i - 1, 0);
                         let start_time = round(token_timestamps[start_index] + time_offset, 2);
 
                         let end_time;
+                        let raw_end_time;
                         if (i < token_timestamps.length) {
                             end_time = round(token_timestamps[i] + time_offset, 2);
+                            const raw = raw_token_timestamps ?? token_timestamps;
+                            raw_end_time = round(raw[i] + time_offset, 2);
 
                             // Do not allow punctuation-only tokens to have a duration.
-                            // This prevents long pauses from messing up the timestamps.
                             const decoded_text = this.decode([token]);
                             if (PUNCTUATION_ONLY_REGEX.test(decoded_text)) {
-                                // Add `time_precision` to avoid overlapping timestamps
                                 end_time = round(Math.min(start_time + time_precision, end_time), 2);
+                                raw_end_time = end_time;
                             }
                         } else {
-                            // should never happen
                             end_time = null;
+                            raw_end_time = null;
                         }
-                        current_token_timestamps.push([start_time, end_time]);
+                        current_token_timestamps.push([start_time, end_time, raw_end_time]);
                     }
                 }
             }
@@ -411,6 +413,20 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                             }
                             break;
                         }
+                    }
+                }
+
+                // Extend word ends using raw DTW offsets where there is
+                // space before the next word. This preserves natural word
+                // duration (especially before silence gaps) without affecting
+                // the merging/dedup which operated on refined timestamps.
+                for (let i = 0; i < new_chunks.length; ++i) {
+                    const word = new_chunks[i];
+                    if (word._raw_end != null) {
+                        const nextStart = i < new_chunks.length - 1 ? new_chunks[i + 1].timestamp[0] : Infinity;
+                        // Extend end to raw DTW offset, clamped to next word's start
+                        word.timestamp[1] = Math.min(Math.max(word.timestamp[1], word._raw_end), nextStart);
+                        delete word._raw_end;
                     }
                 }
 
@@ -572,10 +588,16 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
         const timings = [];
         for (let i = 0; i < words.length; ++i) {
             const indices = token_indices[i];
-            timings.push({
+            const lastTs = token_timestamps[indices.at(-1)];
+            const word = {
                 text: words[i],
-                timestamp: [token_timestamps[indices.at(0)][0], token_timestamps[indices.at(-1)][1]],
-            });
+                timestamp: [token_timestamps[indices.at(0)][0], lastTs[1]],
+            };
+            // Carry raw DTW offset end if available (third element of tuple)
+            if (lastTs[2] != null) {
+                word._raw_end = lastTs[2];
+            }
+            timings.push(word);
         }
         return timings;
     }

@@ -63,12 +63,15 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
      * @param {number} [num_frames=null] Number of frames in the input audio.
      * @param {number} [time_precision=0.02] Precision of the timestamps in seconds
      * @param {number} [num_input_ids=0] Number of decoder input ids (prefix tokens) to skip in DTW
-     * @returns {Tensor} tensor containing the timestamps in seconds for each predicted token
+     * @returns {{ timestamps: Tensor, rawTimestamps: Tensor }} refined and raw DTW onset timestamps
      */
     _extract_token_timestamps(generate_outputs: {
         cross_attentions: Tensor[][];
         sequences: Tensor;
-    }, alignment_heads: number[][], num_frames?: number, time_precision?: number, num_input_ids?: number): Tensor;
+    }, alignment_heads: number[][], num_frames?: number, time_precision?: number, num_input_ids?: number): {
+        timestamps: Tensor;
+        rawTimestamps: Tensor;
+    };
 }
 export class LiteWhisperForConditionalGeneration extends WhisperForConditionalGeneration {
 }

@@ -2,13 +2,14 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
     get timestamp_begin(): number;
     /**
      * Decodes automatic speech recognition (ASR) sequences.
-     * @param {Array<{tokens: bigint[], token_timestamps?: number[], stride: number[]}>} sequences The sequences to decode.
+     * @param {Array<{tokens: bigint[], token_timestamps?: number[], raw_token_timestamps?: number[], stride: number[]}>} sequences The sequences to decode.
      * @param {Object} options The options to use for decoding.
      * @returns {Array<string|{chunks?: undefined|Array<{language: string|null, timestamp: Array<number|null>, text: string}>}>} The decoded sequences.
      */
     _decode_asr(sequences: Array<{
         tokens: bigint[];
         token_timestamps?: number[];
+        raw_token_timestamps?: number[];
         stride: number[];
     }>, { return_timestamps, return_language, time_precision, force_full_sequences }?: any): Array<string | {
         chunks?: undefined | Array<{

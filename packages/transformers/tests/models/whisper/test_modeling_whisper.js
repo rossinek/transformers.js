@@ -156,9 +156,11 @@ export default () => {
           sequences: new Tensor("int64", BigInt64Array.from([1n, 2n, 3n]), [1, 3]),
         };
 
-        const timestamps = extractor._extract_token_timestamps(outputs, [[0, 0]], 4, 0.02, 0);
-        // Weighted median of [exp(5),exp(5)] at frames [0,1] → frame 0; at frames [2,3] → frame 2
+        const { timestamps, rawTimestamps } = extractor._extract_token_timestamps(outputs, [[0, 0]], 4, 0.02, 0);
+        // 30th percentile of [exp(5),exp(5)] at frames [0,1] → frame 0; at frames [2,3] → frame 2
         expect(timestamps.tolist()).toBeCloseToNested([[0, 0.04, 0.04]], 5);
+        // Raw DTW offsets (last frame per token): token 0 → frame 1, token 1 → frame 3
+        expect(rawTimestamps.tolist()).toBeCloseToNested([[0.02, 0.06, 0.06]], 5);
       });
     });
 

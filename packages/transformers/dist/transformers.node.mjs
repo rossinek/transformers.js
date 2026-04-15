@@ -17882,7 +17882,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
   }
   /**
    * Decodes automatic speech recognition (ASR) sequences.
-   * @param {Array<{tokens: bigint[], token_timestamps?: number[], stride: number[]}>} sequences The sequences to decode.
+   * @param {Array<{tokens: bigint[], token_timestamps?: number[], raw_token_timestamps?: number[], stride: number[]}>} sequences The sequences to decode.
    * @param {Object} options The options to use for decoding.
    * @returns {Array<string|{chunks?: undefined|Array<{language: string|null, timestamp: Array<number|null>, text: string}>}>} The decoded sequences.
    */
@@ -17909,6 +17909,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
     for (const output of sequences) {
       const token_ids = output.tokens;
       const token_timestamps = Array.isArray(output.token_timestamps) ? output.token_timestamps : null;
+      const raw_token_timestamps = Array.isArray(output.raw_token_timestamps) ? output.raw_token_timestamps : null;
       let last_timestamp = null;
       let first_timestamp = timestamp_begin;
       if ("stride" in output) {
@@ -18011,16 +18012,21 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
             const start_index = Math.max(i - 1, 0);
             let start_time = round(token_timestamps[start_index] + time_offset, 2);
             let end_time;
+            let raw_end_time;
             if (i < token_timestamps.length) {
               end_time = round(token_timestamps[i] + time_offset, 2);
+              const raw = raw_token_timestamps ?? token_timestamps;
+              raw_end_time = round(raw[i] + time_offset, 2);
               const decoded_text = this.decode([token]);
               if (PUNCTUATION_ONLY_REGEX.test(decoded_text)) {
                 end_time = round(Math.min(start_time + time_precision, end_time), 2);
+                raw_end_time = end_time;
               }
             } else {
               end_time = null;
+              raw_end_time = null;
             }
-            current_token_timestamps.push([start_time, end_time]);
+            current_token_timestamps.push([start_time, end_time, raw_end_time]);
           }
         }
       }
@@ -18114,6 +18120,14 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
             }
           }
         }
+        for (let i = 0; i < new_chunks.length; ++i) {
+          const word = new_chunks[i];
+          if (word._raw_end != null) {
+            const nextStart = i < new_chunks.length - 1 ? new_chunks[i + 1].timestamp[0] : Infinity;
+            word.timestamp[1] = Math.min(Math.max(word.timestamp[1], word._raw_end), nextStart);
+            delete word._raw_end;
+          }
+        }
         optional = { chunks: new_chunks };
       } else {
         optional = { chunks };
@@ -18205,10 +18219,15 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
     const timings = [];
     for (let i = 0; i < words.length; ++i) {
       const indices = token_indices[i];
-      timings.push({
+      const lastTs = token_timestamps[indices.at(-1)];
+      const word = {
         text: words[i],
-        timestamp: [token_timestamps[indices.at(0)][0], token_timestamps[indices.at(-1)][1]]
-      });
+        timestamp: [token_timestamps[indices.at(0)][0], lastTs[1]]
+      };
+      if (lastTs[2] != null) {
+        word._raw_end = lastTs[2];
+      }
+      timings.push(word);
     }
     return timings;
   }
@@ -33141,7 +33160,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       ...kwargs
     });
     if (generation_config.return_token_timestamps) {
-      outputs["token_timestamps"] = this._extract_token_timestamps(
+      const { timestamps, rawTimestamps } = this._extract_token_timestamps(
         // @ts-expect-error TS2345
         outputs,
         generation_config.alignment_heads,
@@ -33149,6 +33168,8 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         0.02,
         init_tokens.length
       );
+      outputs["token_timestamps"] = timestamps;
+      outputs["raw_token_timestamps"] = rawTimestamps;
     }
     return outputs;
   }
@@ -33177,8 +33198,10 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
     let seek = 0;
     const allTokens = [];
     const allTokenTimestamps = [];
+    const allRawTokenTimestamps = [];
     let accumulated_score = 0;
     let lastTokenBoundary = 0;
+    let lastRawTokenBoundary = 0;
     const init_tokens_without_prompt = this._retrieve_init_tokens(generation_config, false);
     while (seek < total_frames) {
       const segment_init_tokens = seek === 0 || generation_config.carry_initial_prompt ? init_tokens : init_tokens_without_prompt;
@@ -33186,7 +33209,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       const segment_input = input_features.slice(null, null, [seek, seek_end]);
       const segment_frames = segment_input.dims[2];
       const segment_features = this._pad_segment(segment_input, segment_frames, num_segment_frames);
-      const { generated_tokens, outputs, seek_token_timestamps } = await this._generate_segment({
+      const { generated_tokens, outputs, seek_token_timestamps, seek_raw_token_timestamps } = await this._generate_segment({
         segment_features,
         generation_config,
         logits_processor,
@@ -33226,10 +33249,13 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       allTokens.push(...generated_tokens.slice(0, tokens_to_keep));
       if (seek_token_timestamps) {
         allTokenTimestamps.push(...seek_token_timestamps.slice(0, tokens_to_keep));
+        allRawTokenTimestamps.push(...seek_raw_token_timestamps.slice(0, tokens_to_keep));
         if (tokens_to_keep < seek_token_timestamps.length) {
           lastTokenBoundary = seek_token_timestamps[tokens_to_keep];
+          lastRawTokenBoundary = seek_raw_token_timestamps[tokens_to_keep];
         } else if (seek_token_timestamps.length > 0) {
           lastTokenBoundary = seek_token_timestamps.at(-1);
+          lastRawTokenBoundary = seek_raw_token_timestamps.at(-1);
         }
       }
       accumulated_score += outputs?.scores?.[0] ?? 0;
@@ -33249,6 +33275,15 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
         output["token_timestamps"] = new Tensor2("float32", new Float32Array(full_timestamps), [
           1,
           full_timestamps.length
+        ]);
+        const full_raw_timestamps = [
+          ...new Array(init_tokens.length).fill(0),
+          ...allRawTokenTimestamps,
+          lastRawTokenBoundary
+        ];
+        output["raw_token_timestamps"] = new Tensor2("float32", new Float32Array(full_raw_timestamps), [
+          1,
+          full_raw_timestamps.length
         ]);
       }
       if (generation_config.return_dict_in_generate) {
@@ -33404,21 +33439,25 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       }
     }
     let seek_token_timestamps = null;
+    let seek_raw_token_timestamps = null;
     if (return_token_timestamps && outputs.cross_attentions) {
-      outputs["token_timestamps"] = this._extract_token_timestamps(
+      const { timestamps: refined, rawTimestamps: raw } = this._extract_token_timestamps(
         outputs,
         generation_config.alignment_heads,
         Math.floor((seek_end - seek) / input_stride),
         0.02,
         init_tokens.length
       );
+      outputs["token_timestamps"] = refined;
+      outputs["raw_token_timestamps"] = raw;
       const time_offset = seek / input_stride * 0.02;
-      seek_token_timestamps = outputs.token_timestamps[0].tolist().slice(init_tokens.length).map((t) => t + time_offset);
+      seek_token_timestamps = refined[0].tolist().slice(init_tokens.length).map((t) => t + time_offset);
+      seek_raw_token_timestamps = raw[0].tolist().slice(init_tokens.length).map((t) => t + time_offset);
     }
     if (generated_tokens.length > 0 && generated_tokens.at(-1) === eos_token_id) {
       generated_tokens.pop();
     }
-    return { generated_tokens, outputs, seek_token_timestamps };
+    return { generated_tokens, outputs, seek_token_timestamps, seek_raw_token_timestamps };
   }
   async _estimate_no_speech_probability(segment_features, init_tokens, no_speech_token_id) {
     const decoder_input_ids = new Tensor2("int64", init_tokens.map(BigInt), [1, init_tokens.length]);
@@ -33522,7 +33561,7 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
    * @param {number} [num_frames=null] Number of frames in the input audio.
    * @param {number} [time_precision=0.02] Precision of the timestamps in seconds
    * @param {number} [num_input_ids=0] Number of decoder input ids (prefix tokens) to skip in DTW
-   * @returns {Tensor} tensor containing the timestamps in seconds for each predicted token
+   * @returns {{ timestamps: Tensor, rawTimestamps: Tensor }} refined and raw DTW onset timestamps
    */
   _extract_token_timestamps(generate_outputs, alignment_heads, num_frames = null, time_precision = 0.02, num_input_ids = 0) {
     if (!generate_outputs.cross_attentions) {
@@ -33585,6 +33624,11 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       new Float32Array(timestampsShape[0] * timestampsShape[1]),
       timestampsShape
     );
+    const rawTimestamps = new Tensor2(
+      "float32",
+      new Float32Array(timestampsShape[0] * timestampsShape[1]),
+      timestampsShape
+    );
     for (let batch_idx = 0; batch_idx < timestampsShape[0]; ++batch_idx) {
       const matrix = batchedMatrices[batch_idx].neg().squeeze_(0);
       const [text_indices, time_indices] = dynamic_time_warping(matrix.tolist());
@@ -33631,14 +33675,24 @@ var WhisperForConditionalGeneration = class extends WhisperPreTrainedModel {
       for (let tok = 1; tok < refined_times.length; ++tok) {
         refined_times[tok] = Math.max(refined_times[tok], refined_times[tok - 1]);
       }
+      const raw_times = [];
+      for (let tok = 0; tok < numTokens; ++tok) {
+        raw_times.push(tokenOffsets[tok] === -1 ? 0 : tokenOffsets[tok] * time_precision);
+      }
       const padded = new Array(num_input_ids).fill(0);
       padded.push(...refined_times);
       if (refined_times.length > 0) {
         padded.push(refined_times.at(-1));
       }
       timestamps[batch_idx].data.set(padded);
+      const rawPadded = new Array(num_input_ids).fill(0);
+      rawPadded.push(...raw_times);
+      if (raw_times.length > 0) {
+        rawPadded.push(raw_times.at(-1));
+      }
+      rawTimestamps[batch_idx].data.set(rawPadded);
     }
-    return timestamps;
+    return { timestamps, rawTimestamps };
   }
 };
 var LiteWhisperForConditionalGeneration = class extends WhisperForConditionalGeneration {
@@ -35473,7 +35527,9 @@ Pipeline {
     delete generation_config["voice_activity_detection"];
     if (generation_config.initial_prompt && generation_config.prompt_ids == null) {
       generation_config.prompt_ids = /** @type {{ get_prompt_ids?: (text: string) => number[] }} */
-      this.processor.get_prompt_ids?.(generation_config.initial_prompt) ?? null;
+      this.processor.get_prompt_ids?.(
+        generation_config.initial_prompt
+      ) ?? null;
     }
     delete generation_config["initial_prompt"];
     if (generation_config.no_speech_threshold != null) {
@@ -35677,7 +35733,9 @@ Pipeline {
     if (!Array.isArray(output?.chunks)) {
       return output;
     }
-    output.chunks = output.chunks.filter((chunk2) => typeof chunk2?.text === "string" && Array.isArray(chunk2.timestamp) && chunk2.timestamp.length === 2).sort((a, b) => {
+    output.chunks = output.chunks.filter(
+      (chunk2) => typeof chunk2?.text === "string" && Array.isArray(chunk2.timestamp) && chunk2.timestamp.length === 2
+    ).sort((a, b) => {
       const a_start = typeof a.timestamp[0] === "number" ? a.timestamp[0] : a.timestamp[1] ?? Infinity;
       const b_start = typeof b.timestamp[0] === "number" ? b.timestamp[0] : b.timestamp[1] ?? Infinity;
       if (a_start !== b_start) return a_start - b_start;
@@ -36020,9 +36078,8 @@ Pipeline {
       stride: chunk2.stride.map((x) => x / sampling_rate),
       is_last: chunk2.is_last
     };
-    const token_timestamps = data?.token_timestamps?.tolist?.()?.[0]?.map(
-      (x) => round(Math.max(0, x + timestamp_shift_s), 2)
-    ) ?? null;
+    const token_timestamps = data?.token_timestamps?.tolist?.()?.[0]?.map((x) => round(Math.max(0, x + timestamp_shift_s), 2)) ?? null;
+    const raw_token_timestamps = data?.raw_token_timestamps?.tolist?.()?.[0]?.map((x) => round(Math.max(0, x + timestamp_shift_s), 2)) ?? null;
     if (return_timestamps === "word") {
       const sequences = data.sequences.tolist()[0];
       const prefixLength = Math.max(
@@ -36033,12 +36090,18 @@ Pipeline {
       if (token_timestamps) {
         outputChunk.token_timestamps = token_timestamps.slice(prefixLength);
       }
+      if (raw_token_timestamps) {
+        outputChunk.raw_token_timestamps = raw_token_timestamps.slice(prefixLength);
+      }
     } else {
       const sequences = data?.sequences ?? data;
       outputChunk.tokens = /** @type {Tensor} */
       sequences[0].tolist();
       if (token_timestamps) {
         outputChunk.token_timestamps = token_timestamps;
+      }
+      if (raw_token_timestamps) {
+        outputChunk.raw_token_timestamps = raw_token_timestamps;
       }
     }
     const text_token_count = this._countTextTokens(outputChunk.tokens ?? [], timestamp_begin);
