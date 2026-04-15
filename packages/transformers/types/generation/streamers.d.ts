@@ -32,7 +32,7 @@ export class TextStreamer extends BaseStreamer {
     });
     tokenizer: import("../tokenization_utils.js").PreTrainedTokenizer;
     skip_prompt: boolean;
-    callback_function: (arg0: string) => void;
+    callback_function: (x: any) => void;
     token_callback_function: (arg0: bigint[]) => void;
     decode_kwargs: any;
     token_cache: any[];

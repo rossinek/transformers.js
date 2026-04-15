@@ -34,7 +34,7 @@ export const DEFAULT_DEVICE_DTYPE_MAPPING: Readonly<{
 export const DEFAULT_DTYPE_SUFFIX_MAPPING: Record<Exclude<DataType, "auto">, string>;
 export const DataTypeMap: Readonly<{
     float32: Float32ArrayConstructor;
-    float16: Float16ArrayConstructor | Uint16ArrayConstructor;
+    float16: Uint16ArrayConstructor | Float16ArrayConstructor;
     float64: Float64ArrayConstructor;
     string: ArrayConstructor;
     int8: Int8ArrayConstructor;
