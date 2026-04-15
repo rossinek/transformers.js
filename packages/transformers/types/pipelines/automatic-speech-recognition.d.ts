@@ -143,7 +143,7 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         text: string;
     }[]>;
     _call_whisper(audio: any, kwargs: any): Promise<any>;
-    _transcribeWhisperVadSegments({ audio, vadResult, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, }: {
+    _transcribeWhisperVadSegments({ audio, vadResult, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, onProgress, }: {
         audio: any;
         vadResult: any;
         generation_config: any;
@@ -155,6 +155,7 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         sampling_rate: any;
         chunk_length_s: any;
         stride_length_s: any;
+        onProgress: any;
     }): Promise<{
         output: {
             text: any;
@@ -174,7 +175,7 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         }[];
     }>;
     _shouldUseSegmentedVadTranscription(vadResult: any): boolean;
-    _transcribeWhisperAudio({ audio, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, }: {
+    _transcribeWhisperAudio({ audio, generation_config, return_timestamps, time_precision, force_full_sequences, timestamp_begin, hop_length, sampling_rate, chunk_length_s, stride_length_s, onProgress, progressState, }: {
         audio: any;
         generation_config: any;
         return_timestamps: any;
@@ -185,6 +186,8 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         sampling_rate: any;
         chunk_length_s: any;
         stride_length_s: any;
+        onProgress: any;
+        progressState?: any;
     }): Promise<{
         output: any;
         analyses: {
@@ -212,6 +215,7 @@ export class AutomaticSpeechRecognitionPipeline extends AutomaticSpeechRecogniti
         input_features: Tensor;
         is_last: boolean;
     }[]>;
+    _computeChunkCount(audioLength: any, chunk_length_s: any, stride_length_s: any, sampling_rate: any): number;
     _buildChunkAnalysis(result: any, start_s: any, end_s: any, logprob_threshold: any): {
         start_s: any;
         end_s: any;

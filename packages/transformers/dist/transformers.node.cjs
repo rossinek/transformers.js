@@ -33959,9 +33959,11 @@ Pipeline {
     const force_full_sequences = kwargs.force_full_sequences ?? false;
     const hallucination_recovery = kwargs.hallucination_recovery ?? false;
     const voice_activity_detection = kwargs.voice_activity_detection ?? false;
+    const onProgress = kwargs.onProgress ?? null;
     let stride_length_s = kwargs.stride_length_s ?? null;
     const generation_config = { ...kwargs };
     generation_config["hallucination_recovery"] = hallucination_recovery;
+    delete generation_config["onProgress"];
     delete generation_config["voice_activity_detection"];
     if (generation_config.initial_prompt && generation_config.prompt_ids == null) {
       generation_config.prompt_ids = /** @type {{ get_prompt_ids?: (text: string) => number[] }} */
@@ -34018,7 +34020,8 @@ Pipeline {
         hop_length,
         sampling_rate,
         chunk_length_s,
-        stride_length_s
+        stride_length_s,
+        onProgress
       }) : await this._transcribeWhisperAudio({
         audio: vadResult.applied ? vadResult.processedAudio : aud,
         generation_config,
@@ -34029,7 +34032,8 @@ Pipeline {
         hop_length,
         sampling_rate,
         chunk_length_s,
-        stride_length_s
+        stride_length_s,
+        onProgress
       });
       let output = activePath.output;
       if (return_timestamps === "word") {
@@ -34056,10 +34060,23 @@ Pipeline {
     hop_length,
     sampling_rate,
     chunk_length_s,
-    stride_length_s
+    stride_length_s,
+    onProgress
   }) {
     const outputs = [];
     const analyses = [];
+    let progressState = null;
+    if (onProgress) {
+      let totalChunks = 0;
+      for (const segment of vadResult.segments) {
+        const startIndex = Math.max(0, Math.floor(segment.original_start_s * sampling_rate));
+        const endIndex = Math.min(audio.length, Math.ceil(segment.original_end_s * sampling_rate));
+        if (endIndex > startIndex) {
+          totalChunks += this._computeChunkCount(endIndex - startIndex, chunk_length_s, stride_length_s, sampling_rate);
+        }
+      }
+      progressState = { completed: 0, total: totalChunks };
+    }
     for (const segment of vadResult.segments) {
       const startIndex = Math.max(0, Math.floor(segment.original_start_s * sampling_rate));
       const endIndex = Math.min(audio.length, Math.ceil(segment.original_end_s * sampling_rate));
@@ -34077,7 +34094,9 @@ Pipeline {
         hop_length,
         sampling_rate,
         chunk_length_s,
-        stride_length_s
+        stride_length_s,
+        onProgress,
+        progressState
       });
       this._shiftOutputTimestamps(segmentPath.output, segment.original_start_s);
       analyses.push(
@@ -34107,7 +34126,9 @@ Pipeline {
     hop_length,
     sampling_rate,
     chunk_length_s,
-    stride_length_s
+    stride_length_s,
+    onProgress,
+    progressState = null
   }) {
     const chunks = await this._createWhisperChunks(audio, chunk_length_s, stride_length_s, sampling_rate);
     const processedChunks = [];
@@ -34118,6 +34139,9 @@ Pipeline {
       return_token_timestamps: true
     } : generation_config;
     const chunkJump = chunk_length_s > 0 ? sampling_rate * chunk_length_s - 2 * sampling_rate * (stride_length_s ?? chunk_length_s / 6) : 0;
+    if (onProgress && !progressState) {
+      progressState = { completed: 0, total: chunks.length };
+    }
     for (let ci = 0; ci < chunks.length; ++ci) {
       const audioOffset = ci * chunkJump;
       const chunk_generation_config = ci === 0 || decode_generation_config.carry_initial_prompt || decode_generation_config.prompt_ids == null ? decode_generation_config : {
@@ -34155,6 +34179,10 @@ Pipeline {
           chunk_generation_config.logprob_threshold ?? -1
         )
       );
+      if (onProgress && progressState) {
+        progressState.completed++;
+        onProgress({ progress: progressState.completed / Math.max(1, progressState.total), completed: progressState.completed, total: progressState.total });
+      }
     }
     const [full_text, optional] = this.tokenizer._decode_asr(processedChunks, {
       time_precision,
@@ -34275,6 +34303,14 @@ Pipeline {
       });
     }
     return chunks;
+  }
+  _computeChunkCount(audioLength, chunk_length_s, stride_length_s, sampling_rate) {
+    if (chunk_length_s <= 0) return 1;
+    if (stride_length_s === null) stride_length_s = chunk_length_s / 6;
+    const window2 = sampling_rate * chunk_length_s;
+    const jump = window2 - 2 * sampling_rate * stride_length_s;
+    if (audioLength <= window2) return 1;
+    return 1 + Math.ceil((audioLength - window2) / jump);
   }
   _buildChunkAnalysis(result, start_s, end_s, logprob_threshold) {
     const duration_s = Math.max(end_s - start_s, 0.1);
