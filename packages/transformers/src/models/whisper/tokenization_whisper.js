@@ -424,8 +424,10 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     const word = new_chunks[i];
                     if (word._raw_end != null) {
                         const nextStart = i < new_chunks.length - 1 ? new_chunks[i + 1].timestamp[0] : Infinity;
-                        // Extend end to raw DTW offset, clamped to next word's start
-                        word.timestamp[1] = Math.min(Math.max(word.timestamp[1], word._raw_end), nextStart);
+                        const maxEnd = Math.min(word.timestamp[1] + 0.5, nextStart);
+                        // Extend end to raw DTW offset, but no more than 0.5s past
+                        // the refined end (which is closer to actual speech end).
+                        word.timestamp[1] = Math.min(Math.max(word.timestamp[1], word._raw_end), maxEnd);
                         delete word._raw_end;
                     }
                 }
