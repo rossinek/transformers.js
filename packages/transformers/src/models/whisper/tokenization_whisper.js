@@ -384,6 +384,10 @@ export class WhisperTokenizer extends PreTrainedTokenizer {
                     }
                 }
 
+                // Sort by start time so boundary words from different
+                // chunks are in temporal order before dedup and extension.
+                new_chunks.sort((a, b) => a.timestamp[0] - b.timestamp[0]);
+
                 // Remove duplicate words at chunk boundaries. Stride overlap
                 // can produce the same word twice with overlapping timestamps
                 // when the merge algorithm can't match tokens (different BPE

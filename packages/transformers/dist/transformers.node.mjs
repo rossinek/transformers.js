@@ -18101,6 +18101,7 @@ var WhisperTokenizer = class extends PreTrainedTokenizer {
             new_chunks.push(word);
           }
         }
+        new_chunks.sort((a, b) => a.timestamp[0] - b.timestamp[0]);
         for (let i = new_chunks.length - 1; i > 0; --i) {
           const curr = new_chunks[i];
           const currText = curr.text.trim().toLowerCase();
