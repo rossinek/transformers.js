@@ -808,15 +808,30 @@ export class WhisperForConditionalGeneration extends WhisperPreTrainedModel {
 
                 const row = attentionRows[tok].data;
                 let sumWeight = 0;
-                let weightedSum = 0;
                 for (let f = onset; f <= offset; ++f) {
-                    const w = Math.exp(row[f]);
-                    sumWeight += w;
-                    weightedSum += f * w;
+                    sumWeight += Math.exp(row[f]);
                 }
 
-                const meanFrame = sumWeight > 0 ? weightedSum / sumWeight : (onset + offset) / 2;
-                refined_times.push(meanFrame * time_precision);
+                // Weighted percentile: the frame where 30% of cumulative
+                // attention mass is reached. Lower than the median to keep
+                // timestamps closer to the word onset while still being
+                // data-driven and robust to distribution tails.
+                let medianFrame;
+                if (sumWeight > 0) {
+                    const half = sumWeight * 0.3;
+                    let cumWeight = 0;
+                    medianFrame = offset;
+                    for (let f = onset; f <= offset; ++f) {
+                        cumWeight += Math.exp(row[f]);
+                        if (cumWeight >= half) {
+                            medianFrame = f;
+                            break;
+                        }
+                    }
+                } else {
+                    medianFrame = (onset + offset) / 2;
+                }
+                refined_times.push(medianFrame * time_precision);
             }
 
             // Enforce monotonicity — attention-weighted means can land out of

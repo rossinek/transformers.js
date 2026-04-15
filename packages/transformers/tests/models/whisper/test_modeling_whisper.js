@@ -157,7 +157,8 @@ export default () => {
         };
 
         const timestamps = extractor._extract_token_timestamps(outputs, [[0, 0]], 4, 0.02, 0);
-        expect(timestamps.tolist()).toBeCloseToNested([[0.01, 0.05, 0.05]], 5);
+        // Weighted median of [exp(5),exp(5)] at frames [0,1] → frame 0; at frames [2,3] → frame 2
+        expect(timestamps.tolist()).toBeCloseToNested([[0, 0.04, 0.04]], 5);
       });
     });
 
